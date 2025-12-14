@@ -7,7 +7,7 @@ import { useAuth } from '@/contexts/auth-context';
 export function RouteGuard({ children }: { children: React.ReactNode }) {
     const router = useRouter();
     const pathname = usePathname();
-    const { isAuthenticated, isLoading } = useAuth();
+    const { isAuthenticated, isLoading, user } = useAuth();
 
     useEffect(() => {
         if (!isLoading) {
@@ -15,11 +15,14 @@ export function RouteGuard({ children }: { children: React.ReactNode }) {
             const isDashboardPage = pathname?.startsWith('/dashboard') ||
                 pathname?.startsWith('/conversations') ||
                 pathname?.startsWith('/leads') ||
+                pathname?.startsWith('/pipeline') ||
                 pathname?.startsWith('/agents') ||
                 pathname?.startsWith('/channels') ||
                 pathname?.startsWith('/analytics') ||
                 pathname?.startsWith('/webhooks') ||
                 pathname?.startsWith('/settings');
+
+            const isSettingsPage = pathname?.startsWith('/settings');
 
             // Redirect to login if trying to access protected pages without auth
             if (isDashboardPage && !isAuthenticated) {
@@ -29,6 +32,14 @@ export function RouteGuard({ children }: { children: React.ReactNode }) {
             // Redirect to dashboard if trying to access auth pages while authenticated
             if (isAuthPage && isAuthenticated) {
                 router.push('/dashboard');
+            }
+
+            // Restrict settings to admin only
+            if (isSettingsPage && !isLoading) {
+                const role = String(user?.role || '').toLowerCase();
+                if (role !== 'admin') {
+                    router.push('/dashboard');
+                }
             }
         }
     }, [isAuthenticated, isLoading, pathname, router]);

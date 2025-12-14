@@ -8,7 +8,9 @@ import {
   Delete,
   UseGuards,
   Query,
+  Req,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { LeadsService } from './leads.service';
 import { CreateLeadDto } from './dto/create-lead.dto';
 import { UpdateLeadDto } from './dto/update-lead.dto';
@@ -30,11 +32,32 @@ export class LeadsController {
     query: {
       search?: string;
       temperature?: 'hot' | 'warm' | 'cold';
-      status?: 'new' | 'contacted' | 'qualified' | 'converted' | 'lost';
+      status?:
+        | 'Lead Novo'
+        | 'Em Qualificação'
+        | 'Qualificado (QUENTE)'
+        | 'Reuniões Agendadas'
+        | 'Proposta enviada (Follow-up)'
+        | 'No Show (Não compareceu) (Follow-up)'
+        | 'Contrato fechado';
       source?: string;
     },
+    @Req()
+    req: Request & {
+      user?: { id: string; role: string; organizationId: string };
+    },
   ) {
-    return this.leadsService.findAll(query);
+    const user = req.user as {
+      id: string;
+      role: string;
+      organizationId: string;
+    };
+    return this.leadsService.findAll(
+      query,
+      user?.id,
+      user?.role,
+      user?.organizationId,
+    );
   }
 
   @Get(':id')
@@ -43,8 +66,23 @@ export class LeadsController {
   }
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() updateLeadDto: UpdateLeadDto) {
-    return this.leadsService.update(id, updateLeadDto);
+  update(
+    @Param('id') id: string,
+    @Body() updateLeadDto: UpdateLeadDto,
+    @Req() req: Request & { user?: { id: string } },
+  ) {
+    const userId = req.user?.id;
+    return this.leadsService.update(id, updateLeadDto, userId);
+  }
+
+  @Post(':id/delegate')
+  delegate(
+    @Param('id') id: string,
+    @Body() body: { assignedToId: string },
+    @Req() req: Request & { user?: { id: string } },
+  ) {
+    const userId = req.user?.id;
+    return this.leadsService.delegate(id, body.assignedToId, userId);
   }
 
   @Post(':id/tags')

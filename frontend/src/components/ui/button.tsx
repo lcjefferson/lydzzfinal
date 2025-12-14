@@ -14,8 +14,8 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
 
         const variants = {
             primary: 'bg-gradient-primary text-white shadow-glow hover:-translate-y-0.5 hover:shadow-[0_8px_20px_rgba(99,102,241,0.4)] focus:ring-accent-primary',
-            secondary: 'bg-surface border border-border text-text-primary hover:bg-surface-hover focus:ring-accent-primary',
-            ghost: 'bg-transparent border border-border text-text-primary hover:bg-surface focus:ring-accent-primary',
+            secondary: 'bg-gradient-primary text-white shadow-glow hover:-translate-y-0.5 hover:shadow-[0_8px_20px_rgba(99,102,241,0.4)] focus:ring-accent-primary',
+            ghost: 'bg-transparent border border-accent-primary text-accent-primary hover:bg-accent-primary/10 focus:ring-accent-primary',
             danger: 'bg-error text-white hover:bg-error/90 focus:ring-error',
         };
 

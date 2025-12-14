@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import type { Message, CreateMessageDto } from '@/types/api';
+import type { CreateMessageDto } from '@/types/api';
 import { toast } from 'sonner';
 
 export function useMessages(conversationId: string) {

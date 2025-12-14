@@ -8,7 +8,6 @@ import { Badge } from '@/components/ui/badge';
 import {
     MessageSquare,
     Users,
-    TrendingUp,
     Bot,
     Plus,
 } from 'lucide-react';
@@ -18,7 +17,7 @@ import { useRouter } from 'next/navigation';
 
 export default function DashboardPage() {
     const router = useRouter();
-    const { data: metrics, isLoading: metricsLoading } = useDashboardMetrics();
+    const { data: metrics } = useDashboardMetrics();
     const { data: leadStats, isLoading: leadStatsLoading } = useLeadStats();
     const { data: agents, isLoading: agentsLoading } = useAgents();
 
@@ -61,9 +60,9 @@ export default function DashboardPage() {
     };
 
     const totalLeads = leadFunnel.reduce((sum, item) => sum + (item._count?.id || 0), 0);
-    const newLeads = getLeadCount('new');
-    const qualifiedLeads = getLeadCount('qualified');
-    const convertedLeads = getLeadCount('converted');
+    const newLeads = getLeadCount('Lead Novo');
+    const qualifiedLeads = getLeadCount('Qualificado (QUENTE)');
+    const convertedLeads = getLeadCount('Contrato fechado');
 
     return (
         <div>
@@ -89,16 +88,16 @@ export default function DashboardPage() {
                 {/* Charts Row */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                     {/* Conversas por Canal */}
-                    <Card>
+                    <Card className="bg-white">
                         <CardHeader>
-                            <CardTitle>Conversas por Canal</CardTitle>
+                            <CardTitle className="text-neutral-900">Conversas por Canal</CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <div className="h-64 flex items-center justify-center text-text-secondary">
+                            <div className="h-64 flex items-center justify-center text-neutral-700">
                                 <div className="text-center">
-                                    <MessageSquare className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                                    <p>Total de Conversas: {metrics?.totalConversations || 0}</p>
-                                    <p className="text-sm mt-1 text-gray-500">
+                                    <MessageSquare className="h-12 w-12 mx-auto mb-2 text-neutral-500" />
+                                    <p className="text-neutral-900">Total de Conversas: {metrics?.totalConversations || 0}</p>
+                                    <p className="text-sm mt-1 text-neutral-600">
                                         Configure canais para ver estatísticas
                                     </p>
                                 </div>
@@ -107,9 +106,9 @@ export default function DashboardPage() {
                     </Card>
 
                     {/* Funil de Leads */}
-                    <Card>
+                    <Card className="bg-white">
                         <CardHeader>
-                            <CardTitle>Funil de Leads</CardTitle>
+                            <CardTitle className="text-neutral-900">Funil de Leads</CardTitle>
                         </CardHeader>
                         <CardContent>
                             {leadStatsLoading ? (
@@ -119,9 +118,9 @@ export default function DashboardPage() {
                             ) : (
                                 <div className="space-y-4">
                                     <div className="flex items-center justify-between">
-                                        <span className="text-sm">Novos</span>
+                                        <span className="text-sm text-neutral-800">Novos</span>
                                         <div className="flex items-center gap-2">
-                                            <div className="w-48 h-2 bg-surface rounded-full overflow-hidden">
+                                            <div className="w-48 h-2 bg-neutral-200 rounded-full overflow-hidden">
                                                 <div
                                                     className="h-full bg-info"
                                                     style={{
@@ -129,13 +128,13 @@ export default function DashboardPage() {
                                                     }}
                                                 />
                                             </div>
-                                            <span className="text-sm font-medium w-12 text-right">{newLeads}</span>
+                                            <span className="text-sm font-medium w-12 text-right text-neutral-900">{newLeads}</span>
                                         </div>
                                     </div>
                                     <div className="flex items-center justify-between">
-                                        <span className="text-sm">Qualificados</span>
+                                        <span className="text-sm text-neutral-800">Qualificados</span>
                                         <div className="flex items-center gap-2">
-                                            <div className="w-48 h-2 bg-surface rounded-full overflow-hidden">
+                                            <div className="w-48 h-2 bg-neutral-200 rounded-full overflow-hidden">
                                                 <div
                                                     className="h-full bg-warning"
                                                     style={{
@@ -143,13 +142,13 @@ export default function DashboardPage() {
                                                     }}
                                                 />
                                             </div>
-                                            <span className="text-sm font-medium w-12 text-right">{qualifiedLeads}</span>
+                                            <span className="text-sm font-medium w-12 text-right text-neutral-900">{qualifiedLeads}</span>
                                         </div>
                                     </div>
                                     <div className="flex items-center justify-between">
-                                        <span className="text-sm">Convertidos</span>
+                                        <span className="text-sm text-neutral-800">Convertidos</span>
                                         <div className="flex items-center gap-2">
-                                            <div className="w-48 h-2 bg-surface rounded-full overflow-hidden">
+                                            <div className="w-48 h-2 bg-neutral-200 rounded-full overflow-hidden">
                                                 <div
                                                     className="h-full bg-success"
                                                     style={{
@@ -157,7 +156,7 @@ export default function DashboardPage() {
                                                     }}
                                                 />
                                             </div>
-                                            <span className="text-sm font-medium w-12 text-right">{convertedLeads}</span>
+                                            <span className="text-sm font-medium w-12 text-right text-neutral-900">{convertedLeads}</span>
                                         </div>
                                     </div>
                                 </div>
@@ -167,9 +166,9 @@ export default function DashboardPage() {
                 </div>
 
                 {/* Agent Performance Table */}
-                <Card>
+                <Card className="bg-white">
                     <CardHeader>
-                        <CardTitle>Agentes Configurados</CardTitle>
+                        <CardTitle className="text-neutral-900">Agentes Configurados</CardTitle>
                     </CardHeader>
                     <CardContent>
                         {agentsLoading ? (
@@ -180,17 +179,17 @@ export default function DashboardPage() {
                             <div className="overflow-x-auto">
                                 <table className="w-full">
                                     <thead>
-                                        <tr className="border-b border-border">
-                                            <th className="text-left py-3 px-4 text-sm font-medium text-text-secondary">
+                                        <tr className="border-b border-neutral-200">
+                                            <th className="text-left py-3 px-4 text-sm font-medium text-neutral-700">
                                                 Agente
                                             </th>
-                                            <th className="text-left py-3 px-4 text-sm font-medium text-text-secondary">
+                                            <th className="text-left py-3 px-4 text-sm font-medium text-neutral-700">
                                                 Modelo
                                             </th>
-                                            <th className="text-left py-3 px-4 text-sm font-medium text-text-secondary">
+                                            <th className="text-left py-3 px-4 text-sm font-medium text-neutral-700">
                                                 Temperatura
                                             </th>
-                                            <th className="text-left py-3 px-4 text-sm font-medium text-text-secondary">
+                                            <th className="text-left py-3 px-4 text-sm font-medium text-neutral-700">
                                                 Status
                                             </th>
                                         </tr>
@@ -199,7 +198,7 @@ export default function DashboardPage() {
                                         {agents.map((agent) => (
                                             <tr
                                                 key={agent.id}
-                                                className="border-b border-border hover:bg-surface transition-colors cursor-pointer"
+                                                className="border-b border-neutral-200 hover:bg-neutral-50 transition-colors cursor-pointer"
                                                 onClick={() => router.push(`/agents`)}
                                             >
                                                 <td className="py-4 px-4">
@@ -208,15 +207,15 @@ export default function DashboardPage() {
                                                             <Bot className="h-5 w-5 text-white" />
                                                         </div>
                                                         <div>
-                                                            <div className="font-medium">{agent.name}</div>
+                                                            <div className="font-medium text-neutral-900">{agent.name}</div>
                                                             {agent.description && (
-                                                                <div className="text-sm text-gray-500">{agent.description}</div>
+                                                                <div className="text-sm text-neutral-600">{agent.description}</div>
                                                             )}
                                                         </div>
                                                     </div>
                                                 </td>
-                                                <td className="py-4 px-4">{agent.model}</td>
-                                                <td className="py-4 px-4">{agent.temperature}</td>
+                                                <td className="py-4 px-4 text-neutral-900">{agent.model}</td>
+                                                <td className="py-4 px-4 text-neutral-900">{agent.temperature}</td>
                                                 <td className="py-4 px-4">
                                                     <Badge variant={agent.isActive ? 'success' : 'default'}>
                                                         {agent.isActive ? 'Ativo' : 'Inativo'}
@@ -228,10 +227,10 @@ export default function DashboardPage() {
                                 </table>
                             </div>
                         ) : (
-                            <div className="h-32 flex items-center justify-center text-text-secondary">
+                            <div className="h-32 flex items-center justify-center text-neutral-700">
                                 <div className="text-center">
-                                    <Bot className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                                    <p>Nenhum agente configurado</p>
+                                    <Bot className="h-12 w-12 mx-auto mb-2 text-neutral-500" />
+                                    <p className="text-neutral-900">Nenhum agente configurado</p>
                                     <Button
                                         className="mt-4"
                                         size="sm"

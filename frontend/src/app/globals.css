@@ -14,11 +14,11 @@
     --popover-foreground: 0 0% 3.9%;
     --primary: 0 0% 9%;
     --primary-foreground: 0 0% 98%;
-    --secondary: 0 0% 96.1%;
+    --secondary: 0 0% 100%;
     --secondary-foreground: 0 0% 9%;
-    --muted: 0 0% 96.1%;
+    --muted: 0 0% 100%;
     --muted-foreground: 0 0% 45.1%;
-    --accent: 0 0% 96.1%;
+    --accent: 0 0% 100%;
     --accent-foreground: 0 0% 9%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 0 0% 98%;
@@ -34,12 +34,12 @@
   }
 
   * {
-    border-color: rgba(255, 255, 255, 0.1);
+    border-color: rgba(0, 0, 0, 0.18);
   }
 
   body {
-    background-color: #0B122B;
-    color: #FFFFFF;
+    background-color: #FFFFFF;
+    color: #0B122B;
     font-family: var(--font-inter), sans-serif;
     font-feature-settings: 'rlig' 1, 'calt' 1;
   }
@@ -101,7 +101,7 @@
 
 @layer components {
   .card {
-    @apply bg-secondary border border-border rounded-lg p-6 backdrop-blur-sm transition-all duration-300;
+    @apply bg-white border border-border rounded-lg p-6 backdrop-blur-sm transition-all duration-300;
   }
 
   .card:hover {
@@ -117,15 +117,15 @@
   }
 
   .btn-secondary {
-    @apply btn bg-surface border border-border text-text-primary hover:bg-surface-hover focus:ring-accent-primary;
+    @apply btn bg-white border border-neutral-300 text-neutral-900 hover:bg-neutral-50 focus:ring-primary;
   }
 
   .btn-ghost {
-    @apply btn bg-transparent border border-border text-text-primary hover:bg-surface focus:ring-accent-primary;
+    @apply btn bg-white border border-transparent text-neutral-900 hover:bg-neutral-50 focus:ring-primary;
   }
 
   .input {
-    @apply w-full bg-muted border border-border rounded-md px-4 py-3 text-text-primary placeholder:text-text-tertiary transition-all duration-200 focus:outline-none focus:border-info focus:ring-2 focus:ring-info/30;
+    @apply w-full bg-white border border-neutral-300 rounded-md px-4 py-3 text-neutral-900 placeholder:text-neutral-500 transition-all duration-200 focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/30;
   }
 
   .badge {
@@ -145,11 +145,11 @@
   }
 
   .sidebar-item {
-    @apply flex items-center gap-3 px-4 py-3 rounded-md text-text-secondary hover:text-text-primary hover:bg-surface transition-all duration-200 hover:shadow-glow;
+    @apply flex items-center gap-3 px-4 py-3 rounded-md text-neutral-700 hover:text-neutral-900 hover:bg-neutral-100 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200;
   }
 
   .sidebar-item-active {
-    @apply sidebar-item text-text-primary bg-surface border-l-[3px] border-info shadow-glow;
+    @apply sidebar-item bg-gradient-primary text-white shadow-glow hover:bg-gradient-primary hover:text-white;
   }
 
   .chat-bubble {
@@ -157,7 +157,7 @@
   }
 
   .chat-bubble-contact {
-    @apply chat-bubble bg-muted text-text-primary;
+    @apply chat-bubble bg-neutral-900 text-white;
   }
 
   .chat-bubble-ai {
@@ -209,7 +209,7 @@
 
   .scrollbar-thin {
     scrollbar-width: thin;
-    scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
+    scrollbar-color: rgba(0, 0, 0, 0.2) transparent;
   }
 
   .scrollbar-thin::-webkit-scrollbar {
@@ -221,12 +221,12 @@
   }
 
   .scrollbar-thin::-webkit-scrollbar-thumb {
-    background-color: rgba(255, 255, 255, 0.1);
+    background-color: rgba(0, 0, 0, 0.2);
     border-radius: 3px;
   }
 
   .scrollbar-thin::-webkit-scrollbar-thumb:hover {
-    background-color: rgba(255, 255, 255, 0.2);
+    background-color: rgba(0, 0, 0, 0.3);
   }
 }
 
@@ -256,9 +256,9 @@
 .skeleton {
   animation: shimmer 2s infinite;
   background: linear-gradient(to right,
-      rgba(255, 255, 255, 0.05) 0%,
-      rgba(255, 255, 255, 0.1) 50%,
-      rgba(255, 255, 255, 0.05) 100%);
+      rgba(0, 0, 0, 0.03) 0%,
+      rgba(0, 0, 0, 0.06) 50%,
+      rgba(0, 0, 0, 0.03) 100%);
   background-size: 1000px 100%;
 }
 

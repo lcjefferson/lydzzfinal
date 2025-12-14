@@ -9,7 +9,7 @@ import {
 export class CreateChannelDto {
   @IsString()
   @IsNotEmpty()
-  @IsIn(['whatsapp', 'instagram'])
+  @IsIn(['whatsapp', 'instagram', 'facebook', 'email', 'internal'])
   type: string;
 
   @IsString()

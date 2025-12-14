@@ -18,6 +18,8 @@ import { WebhooksModule } from './webhooks/webhooks.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { UploadModule } from './upload/upload.module';
 import { CommonModule } from './common/common.module';
+import { InternalModule } from './internal/internal.module';
+import { MediaModule } from './media/media.module';
 
 @Module({
   imports: [
@@ -48,6 +50,8 @@ import { CommonModule } from './common/common.module';
     WebhooksModule,
     AnalyticsModule,
     UploadModule,
+    InternalModule,
+    MediaModule,
   ],
   controllers: [AppController],
   providers: [AppService],

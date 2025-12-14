@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateLeadDto } from './dto/create-lead.dto';
 import { UpdateLeadDto } from './dto/update-lead.dto';
@@ -22,15 +23,45 @@ export class LeadsService {
     });
   }
 
-  async findAll(filters?: {
-    search?: string;
-    temperature?: 'hot' | 'warm' | 'cold';
-    status?: 'new' | 'contacted' | 'qualified' | 'converted' | 'lost';
-    source?: string;
-  }): Promise<Lead[]> {
-    const where: Record<string, unknown> = {};
+  async findAll(
+    filters?: {
+      search?: string;
+      temperature?: 'hot' | 'warm' | 'cold';
+      status?:
+        | 'Lead Novo'
+        | 'Em Qualificação'
+        | 'Qualificado (QUENTE)'
+        | 'Reuniões Agendadas'
+        | 'Proposta enviada (Follow-up)'
+        | 'No Show (Não compareceu) (Follow-up)'
+        | 'Contrato fechado';
+      source?: string;
+    },
+    userId?: string,
+    role?: string,
+    _organizationId?: string,
+  ): Promise<Lead[]> {
+    void _organizationId;
+    const where: Prisma.LeadWhereInput = {};
     if (filters?.temperature) where.temperature = filters.temperature;
-    if (filters?.status) where.status = filters.status;
+    if (filters?.status) {
+      const status = filters.status;
+      const synonyms: Record<string, string[]> = {
+        'Lead Novo': ['new'],
+        'Em Qualificação': ['lost', 'qualific', 'qualificação'],
+        'Qualificado (QUENTE)': ['quente', 'qualificado'],
+        'Reuniões Agendadas': ['reuni', 'reunião', 'agendada'],
+        'Proposta enviada (Follow-up)': ['proposta'],
+        'No Show (Não compareceu) (Follow-up)': ['no show'],
+        'Contrato fechado': ['converted', 'fechado', 'contrato'],
+      };
+      const or: Prisma.LeadWhereInput[] = [{ status }];
+      const syns = synonyms[status] || [];
+      syns.forEach((s) => {
+        or.push({ status: s });
+      });
+      Object.assign(where, { OR: or });
+    }
     if (filters?.source) where.source = filters.source;
     if (filters?.search) {
       const s = filters.search;
@@ -44,21 +75,43 @@ export class LeadsService {
       });
     }
 
+    const r = String(role || '').toLowerCase();
+    if (r && r !== 'admin' && r !== 'manager') {
+      where.assignedToId = userId;
+    }
+
     return this.prisma.lead.findMany({
       where,
       orderBy: { createdAt: 'desc' },
+      include: { assignedTo: true },
     });
   }
 
   async findOne(id: string): Promise<Lead | null> {
-    return this.prisma.lead.findUnique({ where: { id } });
+    return this.prisma.lead.findUnique({
+      where: { id },
+      include: { assignedTo: true },
+    });
   }
 
-  async update(id: string, dto: UpdateLeadDto): Promise<Lead> {
-    return this.prisma.lead.update({
+  async update(id: string, dto: UpdateLeadDto, userId?: string): Promise<Lead> {
+    void userId;
+    const updated = await this.prisma.lead.update({ where: { id }, data: dto });
+    return updated;
+  }
+
+  async delegate(
+    id: string,
+    assignedToId: string,
+    userId?: string,
+  ): Promise<Lead> {
+    void userId;
+    const updated = await this.prisma.lead.update({
       where: { id },
-      data: dto,
+      data: { assignedToId },
+      include: { assignedTo: true },
     });
+    return updated;
   }
 
   async addTag(id: string, tag: string): Promise<Lead> {
@@ -91,29 +144,44 @@ export class LeadsService {
     const lead = await this.prisma.lead.findUnique({ where: { id } });
     const cf = (lead?.customFields as Record<string, unknown>) || {};
     const now = new Date().toISOString();
-    const newComment: { id: string; content: string; userId?: string; createdAt: string } = {
-      id: crypto.randomUUID(),
+    const newComment: {
+      id: string;
+      content: string;
+      userId?: string;
+      createdAt: string;
+    } = {
+      id: randomUUID(),
       content,
       userId,
       createdAt: now,
     };
-    const existing: Array<{ id: string; content: string; userId?: string; createdAt: string }> = Array.isArray(
-      (cf as Record<string, unknown>).comments,
-    )
-      ? (((cf as Record<string, unknown>).comments as unknown) as Array<{
+    const existing: Array<{
+      id: string;
+      content: string;
+      userId?: string;
+      createdAt: string;
+    }> = Array.isArray(cf.comments)
+      ? (cf.comments as Array<{
           id: string;
           content: string;
           userId?: string;
           createdAt: string;
         }>)
       : [];
-    const next: Array<{ id: string; content: string; userId?: string; createdAt: string }> = [
-      ...existing,
-      newComment,
-    ];
+    const next: Array<{
+      id: string;
+      content: string;
+      userId?: string;
+      createdAt: string;
+    }> = [...existing, newComment];
     return this.prisma.lead.update({
       where: { id },
-      data: { customFields: { ...(cf || {}), comments: next as unknown as Prisma.InputJsonValue } },
+      data: {
+        customFields: {
+          ...(cf || {}),
+          comments: next as unknown as Prisma.InputJsonValue,
+        },
+      },
     });
   }
 

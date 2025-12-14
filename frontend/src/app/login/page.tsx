@@ -18,7 +18,7 @@ export default function LoginPage() {
         e.preventDefault();
         try {
             await login(formData);
-        } catch (error) {
+        } catch {
             // Error is handled in AuthContext
         }
     };

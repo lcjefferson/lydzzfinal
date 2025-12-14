@@ -15,6 +15,7 @@ import {
     ChevronLeft,
     ChevronRight,
     LogOut,
+    GitBranch,
 } from 'lucide-react';
 import { Avatar } from '@/components/ui/avatar';
 import { useEffect, useState } from 'react';
@@ -27,7 +28,14 @@ const navigation = [
         items: [
             { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
             { name: 'Conversas', href: '/conversations', icon: MessageSquare, badge: 5 },
+            { name: 'Chat Interno', href: '/chat', icon: MessageSquare },
             { name: 'Leads', href: '/leads', icon: Users },
+        ],
+    },
+    {
+        title: 'Pipeline',
+        items: [
+            { name: 'Pipeline', href: '/pipeline', icon: GitBranch },
         ],
     },
     {
@@ -98,10 +106,28 @@ export function Sidebar() {
         };
     }, [onMessageCreated, offMessageCreated]);
 
+    const role = (typeof user?.role === 'string' ? user.role : 'user').toLowerCase();
+    const canAccess = (href: string) => {
+        if (href === '/settings') {
+            return role === 'admin';
+        }
+        if (role === 'admin') return true;
+        if (role === 'sdr') {
+            return ['/dashboard', '/conversations', '/leads'].includes(href);
+        }
+        if (role === 'vendedor') {
+            return ['/dashboard', '/conversations', '/leads', '/pipeline'].includes(href);
+        }
+        if (role === 'consultant' || role === 'manager') {
+            return ['/dashboard', '/conversations', '/leads', '/pipeline', '/chat'].includes(href);
+        }
+        return ['/dashboard', '/conversations', '/leads'].includes(href);
+    };
+
     return (
         <div
             className={cn(
-                'flex flex-col h-screen bg-secondary/50 border-r border-border transition-all duration-300',
+                'flex flex-col h-screen bg-white border-r border-border transition-all duration-300',
                 collapsed ? 'w-16' : 'w-64'
             )}
         >
@@ -112,7 +138,7 @@ export function Sidebar() {
                         <div className="h-8 w-8 rounded-lg bg-gradient-primary flex items-center justify-center">
                             <span className="text-white font-bold text-sm">LA</span>
                         </div>
-                        <span className="font-display font-bold text-lg">LydzzAI</span>
+                        <span className="font-display font-bold text-lg text-neutral-900">LydzzAI</span>
                     </div>
                 )}
                 <button
@@ -120,9 +146,9 @@ export function Sidebar() {
                     className="p-1.5 rounded-md hover:bg-surface transition-colors"
                 >
                     {collapsed ? (
-                        <ChevronRight className="h-5 w-5" />
+                        <ChevronRight className="h-5 w-5 text-neutral-900" />
                     ) : (
-                        <ChevronLeft className="h-5 w-5" />
+                        <ChevronLeft className="h-5 w-5 text-neutral-900" />
                     )}
                 </button>
             </div>
@@ -132,12 +158,12 @@ export function Sidebar() {
                 {navigation.map((section) => (
                     <div key={section.title}>
                         {!collapsed && (
-                            <h3 className="text-xs font-semibold text-text-tertiary uppercase tracking-wider mb-2 px-4">
+                            <h3 className="text-sm font-bold text-neutral-800 uppercase tracking-wider mb-2 px-4">
                                 {section.title}
                             </h3>
                         )}
                         <ul className="space-y-1">
-                            {section.items.map((item) => {
+                            {section.items.filter((item) => canAccess(item.href)).map((item) => {
                                 const isActive = pathname === item.href;
                                 const Icon = item.icon;
 
@@ -174,22 +200,24 @@ export function Sidebar() {
 
             {/* User Profile */}
             <div className="p-4 border-t border-border space-y-2">
-                <Link
-                    href="/settings"
-                    className={cn(
-                        'flex items-center gap-3 p-3 rounded-md hover:bg-surface transition-colors',
-                        collapsed && 'justify-center'
-                    )}
-                >
-                    <Avatar fallback={user?.name?.substring(0, 2).toUpperCase() || 'U'} size="sm" />
-                    {!collapsed && (
-                        <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium truncate">{user?.name || 'Usuário'}</p>
-                            <p className="text-xs text-text-secondary truncate">{roleLabel || 'User'}</p>
-                        </div>
-                    )}
-                    <Settings className={cn('h-4 w-4 text-text-secondary', collapsed && 'hidden')} />
-                </Link>
+                {role === 'admin' && (
+                    <Link
+                        href="/settings"
+                        className={cn(
+                            'flex items-center gap-3 p-3 rounded-md hover:bg-surface transition-colors',
+                            collapsed && 'justify-center'
+                        )}
+                    >
+                        <Avatar fallback={user?.name?.substring(0, 2).toUpperCase() || 'U'} size="sm" />
+                        {!collapsed && (
+                            <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium truncate text-neutral-900">{user?.name || 'Usuário'}</p>
+                                <p className="text-xs text-text-secondary truncate">{roleLabel || 'User'}</p>
+                            </div>
+                        )}
+                        <Settings className={cn('h-4 w-4 text-text-secondary', collapsed && 'hidden')} />
+                    </Link>
+                )}
 
                 <button
                     onClick={() => logout()}

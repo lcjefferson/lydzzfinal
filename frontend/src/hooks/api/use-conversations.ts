@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import type { Conversation, CreateConversationDto, UpdateConversationDto } from '@/types/api';
+import type { CreateConversationDto, UpdateConversationDto } from '@/types/api';
 import { toast } from 'sonner';
 
 export function useConversations() {

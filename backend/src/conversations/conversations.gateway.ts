@@ -42,6 +42,18 @@ export class ConversationsGateway
     return { event: 'leftConversation', data: conversationId };
   }
 
+  @SubscribeMessage('typing')
+  handleTyping(
+    client: Socket,
+    payload: { conversationId: string; userId?: string; name?: string },
+  ) {
+    const { conversationId, userId, name } = payload;
+    this.server
+      .to(`conversation_${conversationId}`)
+      .emit('typing', { conversationId, userId, name, at: Date.now() });
+    return { event: 'typing', data: conversationId };
+  }
+
   emitNewMessage(
     conversationId: string,
     message: import('@prisma/client').Message,

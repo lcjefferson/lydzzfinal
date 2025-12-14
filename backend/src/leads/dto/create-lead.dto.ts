@@ -40,7 +40,15 @@ export class CreateLeadDto {
 
   @IsString()
   @IsOptional()
-  @IsEnum(['new', 'contacted', 'qualified', 'converted', 'lost'])
+  @IsEnum([
+    'Lead Novo',
+    'Em Qualificação',
+    'Qualificado (QUENTE)',
+    'Reuniões Agendadas',
+    'Proposta enviada (Follow-up)',
+    'No Show (Não compareceu) (Follow-up)',
+    'Contrato fechado',
+  ])
   status?: string;
 
   @IsString()

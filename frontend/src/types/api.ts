@@ -42,7 +42,7 @@ export interface Agent {
 
 export interface Channel {
     id: string;
-    type: 'whatsapp' | 'instagram';
+    type: 'whatsapp' | 'instagram' | 'facebook' | 'email' | 'internal';
     name: string;
     identifier: string;
     accessToken?: string;
@@ -93,11 +93,13 @@ export interface Lead {
     position?: string;
     temperature: 'hot' | 'warm' | 'cold';
     score: number;
-    status: 'new' | 'contacted' | 'qualified' | 'converted' | 'lost';
+    status: 'Lead Novo' | 'Em Qualificação' | 'Qualificado (QUENTE)' | 'Reuniões Agendadas' | 'Proposta enviada (Follow-up)' | 'No Show (Não compareceu) (Follow-up)' | 'Contrato fechado';
     source?: string;
     interest?: string;
     customFields?: Record<string, unknown>;
     organizationId: string;
+    assignedToId?: string;
+    assignedTo?: User;
     createdAt: Date;
     updatedAt: Date;
 }

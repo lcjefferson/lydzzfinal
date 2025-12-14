@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import type { Agent, CreateAgentDto, UpdateAgentDto } from '@/types/api';
+import type { CreateAgentDto, UpdateAgentDto } from '@/types/api';
 import { toast } from 'sonner';
 
 export function useAgents() {

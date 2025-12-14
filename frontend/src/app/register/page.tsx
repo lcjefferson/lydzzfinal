@@ -20,7 +20,7 @@ export default function RegisterPage() {
         e.preventDefault();
         try {
             await register(formData);
-        } catch (error) {
+        } catch {
             // Error is handled in AuthContext
         }
     };

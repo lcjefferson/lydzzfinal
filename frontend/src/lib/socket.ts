@@ -56,6 +56,10 @@ class SocketService {
         this.socket?.emit('leaveConversation', { conversationId });
     }
 
+    emitTyping(conversationId: string, userId?: string, name?: string): void {
+        this.socket?.emit('typing', { conversationId, userId, name });
+    }
+
     // Listen for new messages
     onNewMessage(callback: (message: Message) => void): void {
         this.socket?.on('newMessage', callback);
@@ -72,6 +76,14 @@ class SocketService {
 
     offMessageCreated(callback: (message: Message) => void): void {
         this.socket?.off('messageCreated', callback);
+    }
+
+    onTyping(callback: (payload: { conversationId: string; userId?: string; name?: string; at: number }) => void): void {
+        this.socket?.on('typing', callback);
+    }
+
+    offTyping(callback: (payload: { conversationId: string; userId?: string; name?: string; at: number }) => void): void {
+        this.socket?.off('typing', callback);
     }
 }
 

@@ -39,6 +39,33 @@ export class UsersService {
     return this.prisma.user.findMany();
   }
 
+  async findConsultants(): Promise<User[]> {
+    return this.prisma.user.findMany({
+      where: {
+        role: { in: ['consultant', 'vendedor', 'admin', 'manager'] },
+        isActive: true,
+      },
+      orderBy: { name: 'asc' },
+    });
+  }
+
+  async search(q: string): Promise<User[]> {
+    const s = (q || '').trim();
+    const where: Prisma.UserWhereInput = {
+      isActive: true,
+    };
+    if (s) {
+      where.OR = [
+        { name: { contains: s, mode: 'insensitive' } },
+        { email: { contains: s, mode: 'insensitive' } },
+      ];
+    }
+    return this.prisma.user.findMany({
+      where,
+      orderBy: { name: 'asc' },
+    });
+  }
+
   async findOne(id: string): Promise<User | null> {
     return this.prisma.user.findUnique({ where: { id } });
   }

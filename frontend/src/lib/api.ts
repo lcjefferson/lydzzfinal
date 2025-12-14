@@ -58,6 +58,13 @@ class ApiService {
             (response) => response,
             async (error: AxiosError) => {
                 const originalRequest = error.config as (AxiosRequestConfig & { _retry?: boolean }) | undefined;
+                const urlPath = String(originalRequest?.url || '').toLowerCase();
+
+                // Skip refresh logic for auth endpoints
+                const isAuthEndpoint = urlPath.startsWith('/auth/login') || urlPath.startsWith('/auth/register') || urlPath.startsWith('/auth/refresh');
+                if (isAuthEndpoint) {
+                    return Promise.reject(error);
+                }
 
                 // If 401 and not already retried, try to refresh token
                 if (error.response?.status === 401 && originalRequest && !originalRequest._retry) {
@@ -170,6 +177,16 @@ class ApiService {
     // Users
     async getUsers(): Promise<User[]> {
         const response = await this.api.get<User[]>('/users');
+        return response.data;
+    }
+
+    async getConsultants(): Promise<User[]> {
+        const response = await this.api.get<User[]>('/users/consultants');
+        return response.data;
+    }
+
+    async searchUsers(q: string): Promise<User[]> {
+        const response = await this.api.get<User[]>(`/users/search?q=${encodeURIComponent(q)}`);
         return response.data;
     }
 
@@ -315,7 +332,7 @@ class ApiService {
     async getLeads(params?: {
         search?: string;
         temperature?: 'hot' | 'warm' | 'cold';
-        status?: 'new' | 'contacted' | 'qualified' | 'converted' | 'lost';
+        status?: 'Lead Novo' | 'Em Qualificação' | 'Qualificado (QUENTE)' | 'Reuniões Agendadas' | 'Proposta enviada (Follow-up)' | 'No Show (Não compareceu) (Follow-up)' | 'Contrato fechado';
         source?: string;
     }): Promise<Lead[]> {
         const query = new URLSearchParams();
@@ -367,6 +384,11 @@ class ApiService {
         return response.data as Array<{ id: string; content: string; userId?: string; createdAt: string }>;
     }
 
+    async delegateLead(id: string, assignedToId: string) {
+        const response = await this.api.post(`/leads/${id}/delegate`, { assignedToId });
+        return response.data;
+    }
+
     // Webhooks
     async getWebhooks(): Promise<Webhook[]> {
         const response = await this.api.get<Webhook[]>('/webhooks');
@@ -393,6 +415,73 @@ class ApiService {
         const response = await this.api.get<LeadStats>('/analytics/leads');
         return response.data;
     }
+
+    async getContractsReport() {
+        const response = await this.api.get('/analytics/reports/contracts');
+        return response.data as Array<Lead & { assignedTo?: { id: string; name: string; email: string } }>;
+    }
+
+  async getConsultantReport() {
+    const response = await this.api.get('/analytics/reports/consultants');
+    return response.data as Array<{ userId: string; name: string; email: string; closed: number; active: number; total: number; conversionRate: number }>;
+  }
+
+  // Internal Chat
+  async getInternalRooms(): Promise<Array<{ id: string; name: string; lastMessage: string; lastMessageAt: string }>> {
+    const response = await this.api.get('/internal/rooms');
+    return response.data as Array<{ id: string; name: string; lastMessage: string; lastMessageAt: string }>;
+  }
+
+  async createInternalRoom(name: string) {
+    const response = await this.api.post('/internal/rooms', { name });
+    return response.data as { id: string; contactName: string };
+  }
+
+  async getInternalMessages(roomId: string) {
+    const response = await this.api.get(`/internal/rooms/${roomId}/messages`);
+    return response.data as Array<{ id: string; content: string; user?: { id: string; name: string; email: string }; createdAt: string }>
+  }
+
+  async sendInternalMessage(roomId: string, content: string) {
+    const response = await this.api.post(`/internal/rooms/${roomId}/messages`, { content });
+    return response.data as { id: string };
+  }
+
+  async getInternalUsers() {
+    const response = await this.api.get('/internal/users');
+    return response.data as Array<{ id: string; name: string; email: string; role: string }>;
+  }
+
+  async listInternalDMs() {
+    const response = await this.api.get('/internal/dm');
+    return response.data as Array<{ id: string; name: string; lastMessage: string; lastMessageAt: string }>
+  }
+
+  async openInternalDM(targetUserId: string) {
+    const response = await this.api.post('/internal/dm', { targetUserId });
+    return response.data as { id: string; contactName: string };
+  }
+
+  async getInternalDMMessages(conversationId: string) {
+    const response = await this.api.get(`/internal/dm/${conversationId}/messages`);
+    return response.data as Array<{ id: string; content: string; user?: { id: string; name: string; email: string }; createdAt: string }>;
+  }
+
+  async sendInternalDMMessage(conversationId: string, content: string) {
+    const response = await this.api.post(`/internal/dm/${conversationId}/messages`, { content });
+    return response.data as { id: string };
+  }
+
+    async getNotifications() {
+        const response = await this.api.get('/notifications');
+        return response.data as Array<{ id: string; type: string; entityId: string; data?: unknown; createdAt: string; readAt?: string }>;
+    }
+
+    async markNotificationRead(id: string) {
+        const response = await this.api.patch(`/notifications/${id}/read`);
+        return response.data;
+    }
+
 }
 
 export const api = new ApiService();

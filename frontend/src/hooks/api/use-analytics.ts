@@ -1,7 +1,5 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import type { DashboardMetrics, ConversationStats, LeadStats } from '@/types/api';
-import { toast } from 'sonner';
 
 export function useDashboardMetrics() {
     return useQuery({
@@ -24,5 +22,21 @@ export function useLeadStats() {
         queryKey: ['analytics', 'leads'],
         queryFn: () => api.getLeadStats(),
         staleTime: 60000, // 1 minute
+    });
+}
+
+export function useContractsReport() {
+    return useQuery({
+        queryKey: ['analytics', 'reports', 'contracts'],
+        queryFn: () => api.getContractsReport(),
+        staleTime: 60000,
+    });
+}
+
+export function useConsultantReport() {
+    return useQuery({
+        queryKey: ['analytics', 'reports', 'consultants'],
+        queryFn: () => api.getConsultantReport(),
+        staleTime: 60000,
     });
 }

@@ -77,6 +77,35 @@ export class WhatsAppService {
     return null;
   }
 
+  async getMediaInfo(
+    mediaId: string,
+    accessToken: string,
+  ): Promise<{
+    url?: string;
+    mime_type?: string;
+    sha256?: string;
+    file_size?: number;
+  } | null> {
+    try {
+      const response = await axios.get(`${this.apiUrl}/${mediaId}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      const data = response.data as {
+        url?: string;
+        mime_type?: string;
+        sha256?: string;
+        file_size?: number;
+      };
+      return data;
+    } catch (error) {
+      const err = error as { message?: string };
+      this.logger.error(
+        `Failed to get media info: ${err.message ?? 'unknown'}`,
+      );
+      return null;
+    }
+  }
+
   /**
    * Parse incoming WhatsApp webhook payload
    */
@@ -90,10 +119,10 @@ export class WhatsAppService {
             timestamp?: string;
             type?: string;
             text?: { body?: string };
-            image?: { caption?: string };
-            document?: { filename?: string };
+            image?: { caption?: string; id?: string };
+            document?: { filename?: string; id?: string };
             audio?: { id?: string };
-            video?: { caption?: string };
+            video?: { caption?: string; id?: string };
             interactive?: {
               type?: string;
               button_reply?: { id?: string; title?: string };
@@ -119,6 +148,7 @@ export class WhatsAppService {
     type: string;
     phoneNumberId?: string;
     contactName?: string;
+    mediaId?: string;
   } | null {
     try {
       const entry = payload.entry?.[0];
@@ -133,6 +163,7 @@ export class WhatsAppService {
 
       const msgType = message.type || (message.text ? 'text' : 'unknown');
       let content = '';
+      let mediaId: string | undefined;
       switch (msgType) {
         case 'text':
           content = message.text?.body || '';
@@ -145,15 +176,19 @@ export class WhatsAppService {
           break;
         case 'image':
           content = message.image?.caption || '[imagem]';
+          mediaId = message.image?.id;
           break;
         case 'video':
           content = message.video?.caption || '[vídeo]';
+          mediaId = message.video?.id;
           break;
         case 'document':
           content = message.document?.filename || '[documento]';
+          mediaId = message.document?.id;
           break;
         case 'audio':
           content = '[áudio]';
+          mediaId = message.audio?.id;
           break;
         default:
           content = '[mensagem]';
@@ -167,6 +202,7 @@ export class WhatsAppService {
         type: msgType,
         phoneNumberId: value?.metadata?.phone_number_id,
         contactName: value?.contacts?.[0]?.profile?.name,
+        mediaId,
       };
     } catch {
       this.logger.error('Failed to parse incoming message');

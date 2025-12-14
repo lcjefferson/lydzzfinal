@@ -11,7 +11,7 @@ export function formatRelativeTime(dateString: string): string {
   try {
     const date = new Date(dateString);
     return formatDistanceToNow(date, { addSuffix: true, locale: ptBR });
-  } catch (error) {
+  } catch {
     return '';
   }
 }

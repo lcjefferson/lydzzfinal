@@ -201,7 +201,7 @@ export class WebhooksController {
           data: {
             name: incomingMessage.contactName || incomingMessage.from,
             phone: incomingMessage.from,
-            status: 'new',
+            status: 'Lead Novo',
             temperature: 'cold',
             source: 'whatsapp',
             organizationId: channel.organization.id,
@@ -279,11 +279,42 @@ export class WebhooksController {
               ? 'file'
               : 'text';
 
+      let attachments: Record<string, unknown> | undefined;
+      if (mappedType !== 'text' && incomingMessage.mediaId) {
+        const cfg =
+          typeof channel.config === 'object' && channel.config
+            ? (channel.config as {
+                phoneNumberId?: string;
+                accessToken?: string;
+              })
+            : undefined;
+        const accessToken =
+          cfg?.accessToken || channel.accessToken || undefined;
+        if (accessToken) {
+          const media = await this.whatsAppService.getMediaInfo(
+            incomingMessage.mediaId,
+            accessToken,
+          );
+          const port = process.env.PORT || 3001;
+          const base =
+            process.env.APP_URL?.replace(/\/$/, '') ||
+            `http://localhost:${port}`;
+          const proxiedUrl = `${base}/api/media/whatsapp/${incomingMessage.mediaId}${incomingMessage.phoneNumberId ? `?phoneNumberId=${encodeURIComponent(incomingMessage.phoneNumberId)}` : ''}`;
+          attachments = {
+            url: proxiedUrl,
+            mimeType: media?.mime_type,
+            mediaId: incomingMessage.mediaId,
+            source: 'whatsapp',
+          };
+        }
+      }
+
       await this.messagesService.create({
         conversationId: conversation.id,
         content: incomingMessage.message,
         senderType: 'contact',
         type: mappedType,
+        attachments,
       });
       this.logger.log(
         `Inbound message persisted: conversation=${conversation.id} type=${mappedType}`,

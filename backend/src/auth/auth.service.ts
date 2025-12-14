@@ -18,6 +18,23 @@ export class AuthService {
   ) {}
 
   async register(dto: RegisterDto): Promise<AuthResponse> {
+    const useMock =
+      (this.configService.get<string>('USE_MOCK_AUTH') || 'false') === 'true';
+    if (useMock) {
+      const user = {
+        id: 'mock-admin',
+        email: dto.email,
+        password: '',
+        name: dto.name,
+        role: 'admin',
+        isActive: true,
+        lastLoginAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        organizationId: 'mock-org',
+      };
+      return this.generateTokens(user as unknown as User);
+    }
     const existingUser = await this.prisma.user.findUnique({
       where: { email: dto.email },
     });
@@ -64,6 +81,26 @@ export class AuthService {
   }
 
   async login(dto: LoginDto): Promise<AuthResponse> {
+    const useMock =
+      (this.configService.get<string>('USE_MOCK_AUTH') || 'false') === 'true';
+    if (useMock) {
+      if (dto.password !== 'senha123') {
+        throw new UnauthorizedException('Invalid credentials');
+      }
+      const user = {
+        id: 'mock-admin',
+        email: dto.email,
+        password: '',
+        name: 'Admin User',
+        role: 'admin',
+        isActive: true,
+        lastLoginAt: new Date(),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        organizationId: 'mock-org',
+      };
+      return this.generateTokens(user as unknown as User);
+    }
     const user = await this.prisma.user.findUnique({
       where: { email: dto.email },
     });

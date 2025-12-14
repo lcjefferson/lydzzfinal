@@ -10,9 +10,9 @@ export default function DashboardLayout({
 }) {
     return (
         <RouteGuard>
-            <div className="flex h-screen overflow-hidden">
+            <div className="flex h-screen overflow-hidden bg-white">
                 <Sidebar />
-                <main className="flex-1 overflow-y-auto bg-transparent">
+                <main className="flex-1 overflow-y-auto bg-white">
                     {children}
                 </main>
             </div>

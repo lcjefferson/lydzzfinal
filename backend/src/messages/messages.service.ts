@@ -59,7 +59,7 @@ export class MessagesService {
             data: {
               name: conversation.contactName || conversation.contactIdentifier,
               phone: conversation.contactIdentifier,
-              status: 'new',
+              status: 'Lead Novo',
               temperature: 'cold',
               source: conversation.channel.type,
               organizationId: conversation.organizationId,

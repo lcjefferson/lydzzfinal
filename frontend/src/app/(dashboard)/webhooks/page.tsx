@@ -9,8 +9,6 @@ import { Input } from '@/components/ui/input';
 import { Plus, Webhook as WebhookIcon, CheckCircle, XCircle, X, Trash2, Edit } from 'lucide-react';
 import { useWebhooks, useCreateWebhook, useUpdateWebhook, useDeleteWebhook } from '@/hooks/api/use-webhooks';
 import type { Webhook } from '@/types/api';
-import { formatDistanceToNow } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
 
 const AVAILABLE_EVENTS = [
     'lead.created',
@@ -186,7 +184,7 @@ export default function WebhooksPage() {
             {/* Create/Edit Modal */}
             {showCreateModal && (
                 <div
-                    className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50"
+                    className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[1000]"
                     onClick={closeModal}
                 >
                     <Card
@@ -195,7 +193,7 @@ export default function WebhooksPage() {
                     >
                         <div className="p-6">
                             <div className="flex items-start justify-between mb-6">
-                                <h2 className="text-2xl font-bold">
+                                <h2 className="text-2xl font-bold text-neutral-900">
                                     {selectedWebhook ? 'Editar Webhook' : 'Novo Webhook'}
                                 </h2>
                                 <button
@@ -224,7 +222,7 @@ export default function WebhooksPage() {
                                 />
 
                                 <div>
-                                    <label className="block text-sm font-medium mb-2">Eventos</label>
+                                    <label className="block text-sm font-medium text-neutral-900 mb-2">Eventos</label>
                                     <div className="grid grid-cols-2 gap-2">
                                         {AVAILABLE_EVENTS.map((event) => (
                                             <div
@@ -232,8 +230,8 @@ export default function WebhooksPage() {
                                                 className={`
                                                     p-2 rounded-md border cursor-pointer text-sm transition-colors
                                                     ${formData.events.includes(event)
-                                                        ? 'bg-primary-500/10 border-primary-500 text-primary-400'
-                                                        : 'border-border hover:border-text-secondary'
+                                                        ? 'bg-primary-500/10 border-primary-600 text-primary-700'
+                                                        : 'border-border hover:border-text-secondary text-neutral-900'
                                                     }
                                                 `}
                                                 onClick={() => toggleEvent(event)}
@@ -245,7 +243,7 @@ export default function WebhooksPage() {
                                 </div>
 
                                 <div>
-                                    <label className="block text-sm font-medium mb-2">Status</label>
+                                    <label className="block text-sm font-medium text-neutral-900 mb-2">Status</label>
                                     <select
                                         value={formData.isActive ? 'active' : 'inactive'}
                                         onChange={(e) => setFormData({ ...formData, isActive: e.target.value === 'active' })}
@@ -282,11 +280,11 @@ export default function WebhooksPage() {
             {/* Delete Confirmation Modal */}
             {webhookToDelete && (
                 <div
-                    className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50"
+                    className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[1000]"
                     onClick={() => setWebhookToDelete(null)}
                 >
-                    <Card className="w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
-                        <h2 className="text-xl font-bold mb-4">Confirmar Exclusão</h2>
+                    <Card className="w-full max-w-md p-6 bg-white text-neutral-900" onClick={(e) => e.stopPropagation()}>
+                        <h2 className="text-xl font-bold mb-4 text-neutral-900">Confirmar Exclusão</h2>
                         <p className="mb-6">Tem certeza que deseja excluir este webhook? Esta ação não pode ser desfeita.</p>
                         <div className="flex gap-2 justify-end">
                             <Button variant="secondary" onClick={() => setWebhookToDelete(null)}>

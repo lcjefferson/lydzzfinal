@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 export function useLeads(filters?: {
     search?: string;
     temperature?: 'hot' | 'warm' | 'cold';
-    status?: 'new' | 'contacted' | 'qualified' | 'converted' | 'lost';
+    status?: 'Lead Novo' | 'Em Qualificação' | 'Qualificado (QUENTE)' | 'Reuniões Agendadas' | 'Proposta enviada (Follow-up)' | 'No Show (Não compareceu) (Follow-up)' | 'Contrato fechado';
     source?: string;
 }) {
     return useQuery({
@@ -135,5 +135,32 @@ export function useAddLeadComment() {
             toast.success('Comentário adicionado');
         },
         onError: () => toast.error('Erro ao adicionar comentário'),
+    });
+}
+
+export function useDelegateLead() {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async ({ id, assignedToId }: { id: string; assignedToId: string }) => api.delegateLead(id, assignedToId),
+        onMutate: async (vars) => {
+            await queryClient.cancelQueries({ queryKey: ['leads'] });
+            const prev = queryClient.getQueriesData<import('@/types/api').Lead[]>({ queryKey: ['leads'] });
+            prev.forEach(([key, data]) => {
+                if (!data) return;
+                const next = data.map((l) => (l.id === vars.id ? { ...l, assignedToId: vars.assignedToId } : l));
+                queryClient.setQueryData(key, next);
+            });
+            return { prev };
+        },
+        onSuccess: (_, vars) => {
+            queryClient.invalidateQueries({ queryKey: ['leads'] });
+            queryClient.invalidateQueries({ queryKey: ['leads', vars.id] });
+            toast.success('Lead delegado com sucesso');
+        },
+        onError: (error: unknown) => {
+            type ApiErrorResp = { response?: { data?: { message?: string } } };
+            const e = error as ApiErrorResp;
+            toast.error(e.response?.data?.message || 'Erro ao delegar lead');
+        },
     });
 }

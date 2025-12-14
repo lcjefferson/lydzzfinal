@@ -3,17 +3,20 @@
 import { useState, useEffect, useRef } from 'react';
 import { Header } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { ConversationItem } from '@/components/chat/conversation-item';
 import { MessageBubble } from '@/components/chat/message-bubble';
 import { Search, Send, Paperclip, MoreVertical, User, Wifi, WifiOff } from 'lucide-react';
-import { useConversations, useConversation, useUpdateConversation } from '@/hooks/api/use-conversations';
+import { useConversations, useUpdateConversation } from '@/hooks/api/use-conversations';
 import { useMessages, useCreateMessage } from '@/hooks/api/use-messages';
 import { useSocket } from '@/hooks/use-socket';
 import { useQueryClient } from '@tanstack/react-query';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useSearchParams } from 'next/navigation';
+import { useLead, useLeadComments, useAddLeadComment, useUpdateLead } from '@/hooks/api/use-leads';
 
 export default function ConversationsPage() {
     const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
@@ -21,6 +24,7 @@ export default function ConversationsPage() {
     const [filter, setFilter] = useState<'all' | 'active' | 'waiting'>('all');
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const queryClient = useQueryClient();
+    const [showLeadModal, setShowLeadModal] = useState(false);
 
     const { data: conversations, isLoading: conversationsLoading } = useConversations();
     const searchParams = useSearchParams();
@@ -36,7 +40,6 @@ export default function ConversationsPage() {
         ?? preselectedFromContact
         ?? (conversations && conversations.length > 0 ? conversations[0].id : null);
 
-    const { data: selectedConversation } = useConversation(effectiveSelectedId || '');
     const { data: messages } = useMessages(effectiveSelectedId || '');
     const createMessage = useCreateMessage();
     const updateConversation = useUpdateConversation();
@@ -181,19 +184,24 @@ export default function ConversationsPage() {
                         {conversationsLoading ? (
                             <div className="p-4 text-center text-gray-500">Carregando...</div>
                         ) : filteredConversations.length > 0 ? (
-                            filteredConversations.map((conv) => (
-                                <ConversationItem
-                                    key={conv.id}
-                                    id={conv.id}
-                                    contactName={conv.contactName}
-                                    contactIdentifier={conv.contactIdentifier}
-                                    lastMessage={conv.messages?.[conv.messages.length - 1]?.content || 'Sem mensagens'}
-                                    timestamp={new Date(conv.lastMessageAt).toISOString()}
-                                    status={conv.status}
-                                    isSelected={effectiveSelectedId === conv.id}
-                                    onClick={() => setSelectedConversationId(conv.id)}
-                                />
-                            ))
+                            filteredConversations.map((conv) => {
+                                const displayName = (conv.lead?.name || conv.contactName || conv.contactIdentifier || 'Contato').trim();
+                                const identifier = conv.contactIdentifier || conv.lead?.email || conv.lead?.phone || '';
+                                const last = conv.messages?.[0]?.content || conv.messages?.[conv.messages.length - 1]?.content || 'Sem mensagens';
+                                return (
+                                    <ConversationItem
+                                        key={conv.id}
+                                        id={conv.id}
+                                        contactName={displayName}
+                                        contactIdentifier={identifier}
+                                        lastMessage={last}
+                                        timestamp={new Date(conv.lastMessageAt).toISOString()}
+                                        status={conv.status}
+                                        isSelected={effectiveSelectedId === conv.id}
+                                        onClick={() => setSelectedConversationId(conv.id)}
+                                    />
+                                );
+                            })
                         ) : (
                             <div className="p-4 text-center text-gray-500">
                                 Nenhuma conversa encontrada
@@ -209,8 +217,8 @@ export default function ConversationsPage() {
                         <div className="p-4 border-b border-border bg-background-secondary flex items-center justify-between">
                             <div className="flex items-center gap-3">
                                 <div>
-                                    <h3 className="font-semibold">{currentConversation.contactName}</h3>
-                                    <p className="text-sm text-text-secondary">{currentConversation.contactIdentifier}</p>
+                                    <h3 className="font-semibold text-neutral-900">{currentConversation.contactName || currentConversation.lead?.name || currentConversation.contactIdentifier}</h3>
+                                    <p className="text-sm text-neutral-700">{currentConversation.contactIdentifier || currentConversation.lead?.email || currentConversation.lead?.phone}</p>
                                 </div>
                                 {/* WebSocket Status */}
                                 <div className="flex items-center gap-1 text-xs">
@@ -241,7 +249,7 @@ export default function ConversationsPage() {
                         </div>
 
                         {/* Messages */}
-                        <div className="flex-1 overflow-y-auto scrollbar-thin p-6 space-y-4">
+                        <div className="flex-1 overflow-y-auto scrollbar-thin p-6 space-y-4 bg-white">
                             {messages && messages.length > 0 ? (
                                 messages.map((message) => (
                                     <MessageBubble
@@ -250,6 +258,8 @@ export default function ConversationsPage() {
                                         content={message.content}
                                         timestamp={new Date(message.createdAt).toISOString()}
                                         confidence={message.confidence}
+                                        messageType={message.type}
+                                        attachments={message.attachments}
                                     />
                                 ))
                             ) : (
@@ -303,7 +313,7 @@ export default function ConversationsPage() {
                                         <User className="h-6 w-6 text-white" />
                                     </div>
                                     <div>
-                                        <h3 className="font-semibold">{currentConversation.contactName}</h3>
+                                        <h3 className="font-semibold text-neutral-900">{currentConversation.contactName || currentConversation.lead?.name || currentConversation.contactIdentifier}</h3>
                                         <Badge variant="default">Contato</Badge>
                                     </div>
                                 </div>
@@ -311,7 +321,7 @@ export default function ConversationsPage() {
                                 <div className="space-y-3">
                                     <div>
                                         <p className="text-sm text-text-tertiary">Identificador</p>
-                                        <p className="text-sm">{currentConversation.contactIdentifier}</p>
+                                        <p className="text-sm text-neutral-900">{currentConversation.contactIdentifier || currentConversation.lead?.email || currentConversation.lead?.phone}</p>
                                     </div>
                                     <div>
                                         <p className="text-sm text-text-tertiary">Status</p>
@@ -341,6 +351,14 @@ export default function ConversationsPage() {
                                     >
                                         Assumir Conversa
                                     </Button>
+                                    <Button
+                                        variant="secondary"
+                                        className="w-full"
+                                        onClick={() => setShowLeadModal(true)}
+                                        disabled={!currentConversation.lead?.id}
+                                    >
+                                        Ver detalhes do Lead
+                                    </Button>
                                     <Button variant="secondary" className="w-full">
                                         Transferir
                                     </Button>
@@ -357,6 +375,151 @@ export default function ConversationsPage() {
                         </div>
                     </div>
                 )}
+            </div>
+            {showLeadModal && currentConversation?.lead?.id && (
+                <div
+                    className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50"
+                    onClick={() => setShowLeadModal(false)}
+                >
+                    <Card
+                        className="w-full max-w-2xl max-h-[80vh] overflow-y-auto scrollbar-thin m-4 bg-white text-neutral-900 shadow-2xl border border-primary-500/20"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <LeadDetailsModalContent leadId={currentConversation.lead.id} onClose={() => setShowLeadModal(false)} />
+                    </Card>
+                </div>
+            )}
+        </div>
+    );
+}
+
+function LeadDetailsModalContent({ leadId, onClose }: { leadId: string; onClose: () => void }) {
+    const { data: lead } = useLead(leadId);
+    const commentsQuery = useLeadComments(leadId);
+    const addComment = useAddLeadComment();
+    const updateLead = useUpdateLead();
+    const [editing, setEditing] = useState(false);
+    const [content, setContent] = useState('');
+    const [name, setName] = useState('');
+    const [email, setEmail] = useState('');
+    const [phone, setPhone] = useState('');
+    const [company, setCompany] = useState('');
+    const [position, setPosition] = useState('');
+    const [source, setSource] = useState('');
+    const [interest, setInterest] = useState('');
+    const [status, setStatus] = useState('');
+    const [temperature, setTemperature] = useState<'hot' | 'warm' | 'cold'>('cold');
+
+    if (!lead) return null;
+
+    const comments = commentsQuery.data || [];
+
+    const handleSave = async () => {
+        try {
+            await updateLead.mutateAsync({
+                id: lead.id,
+                data: { name, email, phone, company, position, source, interest, status, temperature },
+            });
+            setEditing(false);
+        } catch {}
+    };
+
+    const handleAddComment = async () => {
+        const text = content.trim();
+        if (!text) return;
+        try {
+            await addComment.mutateAsync({ id: lead.id, content: text });
+            setContent('');
+        } catch {}
+    };
+
+    return (
+        <div className="p-6 space-y-6">
+            <div className="flex items-start justify-between">
+                <div>
+                    <h2 className="text-xl font-semibold text-neutral-900">{lead.name}</h2>
+                    <p className="text-sm text-text-tertiary">{lead.email || lead.phone || 'Sem contato'}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                    <Button variant="ghost" onClick={() => setEditing((e) => !e)}>{editing ? 'Cancelar' : 'Editar'}</Button>
+                    {editing && <Button onClick={handleSave} isLoading={updateLead.isPending}>Salvar</Button>}
+                    <Button variant="ghost" onClick={onClose}>Fechar</Button>
+                </div>
+            </div>
+
+            {editing ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <Input label="Nome" value={name} onChange={(e) => setName(e.target.value)} />
+                    <Input label="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
+                    <Input label="Telefone" value={phone} onChange={(e) => setPhone(e.target.value)} />
+                    <Input label="Empresa" value={company} onChange={(e) => setCompany(e.target.value)} />
+                    <Input label="Cargo" value={position} onChange={(e) => setPosition(e.target.value)} />
+                    <Input label="Origem" value={source} onChange={(e) => setSource(e.target.value)} />
+                    <Input label="Interesse" value={interest} onChange={(e) => setInterest(e.target.value)} />
+                    <Input label="Status" value={status} onChange={(e) => setStatus(e.target.value)} />
+                    <div>
+                        <label className="block text-sm font-medium text-neutral-900 mb-2">Temperatura</label>
+                        <select value={temperature} onChange={(e) => setTemperature(e.target.value as 'hot' | 'warm' | 'cold')} className="input">
+                            <option value="hot">hot</option>
+                            <option value="warm">warm</option>
+                            <option value="cold">cold</option>
+                        </select>
+                    </div>
+                </div>
+            ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <p className="text-sm text-text-tertiary">Empresa</p>
+                        <p className="text-sm text-neutral-900">{lead.company || '—'}</p>
+                    </div>
+                    <div>
+                        <p className="text-sm text-text-tertiary">Cargo</p>
+                        <p className="text-sm text-neutral-900">{lead.position || '—'}</p>
+                    </div>
+                    <div>
+                        <p className="text-sm text-text-tertiary">Temperatura</p>
+                        <p className="text-sm text-neutral-900 capitalize">{lead.temperature}</p>
+                    </div>
+                    <div>
+                        <p className="text-sm text-text-tertiary">Status</p>
+                        <p className="text-sm text-neutral-900">{lead.status}</p>
+                    </div>
+                    <div>
+                        <p className="text-sm text-text-tertiary">Origem</p>
+                        <p className="text-sm text-neutral-900">{lead.source || '—'}</p>
+                    </div>
+                    <div>
+                        <p className="text-sm text-text-tertiary">Interesse</p>
+                        <p className="text-sm text-neutral-900">{lead.interest || '—'}</p>
+                    </div>
+                </div>
+            )}
+
+            <div className="space-y-2">
+                <p className="text-sm text-text-tertiary">Responsável</p>
+                <p className="text-sm text-neutral-900">{lead.assignedTo?.name || '—'}</p>
+            </div>
+
+            <div className="space-y-3">
+                <h3 className="font-semibold text-neutral-900">Comentários</h3>
+                <div className="space-y-2 max-h-40 overflow-y-auto scrollbar-thin">
+                    {comments.length === 0 ? (
+                        <p className="text-sm text-text-secondary">Sem comentários</p>
+                    ) : (
+                        comments.map((c) => (
+                            <div key={c.id} className="text-sm">
+                                <p className="text-neutral-900">{c.content}</p>
+                                <p className="text-xs text-text-tertiary">{new Date(c.createdAt).toLocaleString('pt-BR')}</p>
+                            </div>
+                        ))
+                    )}
+                </div>
+                <div className="flex items-end gap-2">
+                    <div className="flex-1">
+                        <Input placeholder="Adicionar comentário" value={content} onChange={(e) => setContent(e.target.value)} />
+                    </div>
+                    <Button onClick={handleAddComment} isLoading={addComment.isPending}>Adicionar</Button>
+                </div>
             </div>
         </div>
     );

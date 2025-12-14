@@ -9,26 +9,30 @@ import { Input } from '@/components/ui/input';
 import {
     Plus,
     Search,
-    Filter,
-    MoreVertical,
     Mail,
     Phone,
     Building,
     TrendingUp,
     X,
 } from 'lucide-react';
-import { useLeads, useCreateLead, useUpdateLead, useDeleteLead, useLeadTags, useAddLeadTag, useRemoveLeadTag, useLeadComments, useAddLeadComment } from '@/hooks/api/use-leads';
+import { useLeads, useCreateLead, useUpdateLead, useDeleteLead, useLeadComments, useAddLeadComment, useDelegateLead } from '@/hooks/api/use-leads';
+import { useAuth } from '@/contexts/auth-context';
+import { api } from '@/lib/api';
 import { useLeadStats } from '@/hooks/api/use-analytics';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { useEffect } from 'react';
+import { toast } from 'sonner';
 
 export default function LeadsPage() {
     const router = useRouter();
+    const searchParams = useSearchParams();
+    const { user } = useAuth();
     const [searchQuery, setSearchQuery] = useState('');
     const [tempFilter, setTempFilter] = useState<'hot' | 'warm' | 'cold' | undefined>(undefined);
-    const [statusFilter, setStatusFilter] = useState<'new' | 'contacted' | 'qualified' | 'converted' | 'lost' | undefined>(undefined);
-    const [selectedLead, setSelectedLead] = useState<string | null>(null);
+    const [statusFilter, setStatusFilter] = useState<'Lead Novo' | 'Em Qualificação' | 'Qualificado (QUENTE)' | 'Reuniões Agendadas' | 'Proposta enviada (Follow-up)' | 'No Show (Não compareceu) (Follow-up)' | 'Contrato fechado' | undefined>(undefined);
+    const [selectedLead, setSelectedLead] = useState<string | null>(searchParams.get('lead'));
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [formData, setFormData] = useState({
         name: '',
@@ -47,8 +51,33 @@ export default function LeadsPage() {
     });
     const { data: leadStats } = useLeadStats();
     const createLead = useCreateLead();
-    const updateLead = useUpdateLead();
     const deleteLead = useDeleteLead();
+    const [users, setUsers] = useState<Array<{ id: string; name: string }>>([]);
+
+    useEffect(() => {
+        (async () => {
+            try {
+                const list = await api.getConsultants();
+                setUsers(list.map((u) => ({ id: u.id, name: u.name })));
+            } catch {}
+        })();
+    }, []);
+
+    const getAssignedName = (l: unknown) => {
+        const a = l as { assignedTo?: { name?: string }; assignedToId?: string };
+        const relNameRaw = (a?.assignedTo?.name || '').trim();
+        if (relNameRaw) {
+            const rel = relNameRaw.toLowerCase();
+            if (rel === 'consultant user') return '';
+            return relNameRaw;
+        }
+        const id = (a?.assignedToId || '').trim();
+        if (!id) return '';
+        const match = users.find((u) => u.id === id);
+        const nameRaw = (match?.name || '').trim();
+        if (nameRaw && nameRaw.toLowerCase() === 'consultant user') return '';
+        return nameRaw;
+    };
 
     // Calculate stats from backend data
     const getLeadCount = (temperature: string) => {
@@ -75,20 +104,22 @@ export default function LeadsPage() {
             cold: 'cold' as const,
         };
         const labels = {
-            hot: '🔥 HOT',
-            warm: '🟡 WARM',
-            cold: '🔵 COLD',
+            hot: 'QUENTE',
+            warm: 'MORNO',
+            cold: 'FRIO',
         };
-        return <Badge variant={variants[temp]}>{labels[temp]}</Badge>;
+        return <Badge variant={variants[temp]} className="w-24 justify-center">{labels[temp]}</Badge>;
     };
 
     const getStatusBadge = (status: string) => {
         const variants: Record<string, 'default' | 'warning' | 'success' | 'error'> = {
-            new: 'default',
-            contacted: 'warning',
-            qualified: 'success',
-            converted: 'success',
-            lost: 'error',
+            'Lead Novo': 'default',
+            'Em Qualificação': 'warning',
+            'Qualificado (QUENTE)': 'success',
+            'Reuniões Agendadas': 'warning',
+            'Proposta enviada (Follow-up)': 'warning',
+            'No Show (Não compareceu) (Follow-up)': 'error',
+            'Contrato fechado': 'success',
         };
         return <Badge variant={variants[status] || 'default'}>{status}</Badge>;
     };
@@ -124,6 +155,8 @@ export default function LeadsPage() {
     };
 
     const filteredLeads = leads || [];
+
+    
 
     return (
         <div>
@@ -196,62 +229,9 @@ export default function LeadsPage() {
                             Frios
                         </Button>
                     </div>
-                    <div className="flex items-center gap-2">
-                        <Button
-                            size="sm"
-                            variant={!statusFilter ? 'primary' : 'secondary'}
-                            onClick={() => setStatusFilter(undefined)}
-                        >
-                            Todos status
-                        </Button>
-                        <Button size="sm" variant={statusFilter === 'new' ? 'primary' : 'secondary'} onClick={() => setStatusFilter('new')}>Novos</Button>
-                        <Button size="sm" variant={statusFilter === 'contacted' ? 'primary' : 'secondary'} onClick={() => setStatusFilter('contacted')}>Contactados</Button>
-                        <Button size="sm" variant={statusFilter === 'qualified' ? 'primary' : 'secondary'} onClick={() => setStatusFilter('qualified')}>Qualificados</Button>
-                        <Button size="sm" variant={statusFilter === 'converted' ? 'primary' : 'secondary'} onClick={() => setStatusFilter('converted')}>Convertidos</Button>
-                        <Button size="sm" variant={statusFilter === 'lost' ? 'primary' : 'secondary'} onClick={() => setStatusFilter('lost')}>Perdidos</Button>
-                    </div>
                 </div>
 
-                {/* Pipeline (Kanban) */}
-                <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-                    {['new','contacted','qualified','converted','lost'].map((stage) => (
-                        <div key={stage} className="border border-border rounded-lg p-3 bg-background-secondary">
-                            <div className="flex items-center justify-between mb-2">
-                                <h3 className="text-sm font-semibold capitalize">{stage}</h3>
-                                <Badge variant="default">{(leads || []).filter(l => l.status===stage).length}</Badge>
-                            </div>
-                            <div
-                                className="space-y-2 min-h-32"
-                                onDragOver={(e) => e.preventDefault()}
-                                onDrop={async (e) => {
-                                    const id = e.dataTransfer.getData('text/plain');
-                                    if (!id) return;
-                                    try {
-                                        await updateLead.mutateAsync({ id, data: { status: stage } });
-                                    } catch {}
-                                }}
-                            >
-                                {(leads || []).filter(l => l.status===stage).map((lead) => (
-                                    <div
-                                        key={lead.id}
-                                        draggable
-                                        onDragStart={(e) => e.dataTransfer.setData('text/plain', lead.id)}
-                                        onClick={() => setSelectedLead(lead.id)}
-                                        className="p-3 rounded-md bg-surface hover:bg-surface-hover border border-border cursor-move"
-                                    >
-                                        <div className="flex items-center justify-between">
-                                            <p className="text-sm font-medium truncate">{lead.name}</p>
-                                            {getTemperatureBadge(lead.temperature)}
-                                        </div>
-                                        {lead.company && (
-                                            <p className="text-xs text-text-tertiary truncate">{lead.company}</p>
-                                        )}
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    ))}
-                </div>
+                
 
                 {/* Leads Table */}
                 <Card>
@@ -278,6 +258,9 @@ export default function LeadsPage() {
                                             Status
                                         </th>
                                         <th className="text-left py-4 px-6 text-sm font-medium text-text-secondary">
+                                            Delegado
+                                        </th>
+                                        <th className="text-left py-4 px-6 text-sm font-medium text-text-secondary">
                                             Origem
                                         </th>
                                         <th className="text-left py-4 px-6 text-sm font-medium text-text-secondary">
@@ -294,17 +277,23 @@ export default function LeadsPage() {
                                         >
                                             <td className="py-4 px-6">
                                                 <div className="space-y-1">
-                                                    <p className="font-medium">{lead.name}</p>
+                                                    <p className="font-medium text-neutral-900">{lead.name}</p>
                                                     {lead.email && (
-                                                        <div className="flex items-center gap-3 text-sm text-text-secondary">
+                                                        <div className="flex items-center gap-3 text-sm text-neutral-700">
                                                             <span className="flex items-center gap-1">
                                                                 <Mail className="h-3 w-3" />
                                                                 {lead.email}
                                                             </span>
                                                         </div>
                                                     )}
+                                                    {(() => {
+                                                        const name = getAssignedName(lead);
+                                                        return name ? (
+                                                            <p className="text-xs text-neutral-700">Delegado: {name}</p>
+                                                        ) : null;
+                                                    })()}
                                                     {(lead.company || lead.position) && (
-                                                        <p className="text-sm text-text-tertiary">
+                                                        <p className="text-sm text-neutral-600">
                                                             {lead.company} {lead.position && `• ${lead.position}`}
                                                         </p>
                                                     )}
@@ -326,6 +315,12 @@ export default function LeadsPage() {
                                             </td>
                                             <td className="py-4 px-6">
                                                 {getStatusBadge(lead.status)}
+                                            </td>
+                                            <td className="py-4 px-6">
+                                                {(() => {
+                                                    const name = getAssignedName(lead);
+                                                    return name ? <span className="text-sm text-neutral-900">{name}</span> : <span className="text-sm text-neutral-500">-</span>;
+                                                })()}
                                             </td>
                                             <td className="py-4 px-6">
                                                 {lead.source && <Badge variant="default">{lead.source}</Badge>}
@@ -364,15 +359,15 @@ export default function LeadsPage() {
                         onClick={() => setShowCreateModal(false)}
                     >
                         <Card
-                            className="w-full max-w-2xl max-h-[80vh] overflow-y-auto m-4"
+                            className="w-full max-w-2xl max-h-[80vh] overflow-y-auto m-4 bg-white text-neutral-900 shadow-2xl border border-primary-500/20"
                             onClick={(e) => e.stopPropagation()}
                         >
                             <div className="p-6">
                                 <div className="flex items-start justify-between mb-6">
-                                    <h2 className="text-2xl font-bold">Novo Lead</h2>
+                                    <h2 className="text-2xl font-bold text-neutral-900">Novo Lead</h2>
                                     <button
                                         onClick={() => setShowCreateModal(false)}
-                                        className="text-text-secondary hover:text-text-primary"
+                                        className="text-neutral-500 hover:text-neutral-800"
                                     >
                                         <X className="h-6 w-6" />
                                     </button>
@@ -383,6 +378,7 @@ export default function LeadsPage() {
                                         label="Nome"
                                         value={formData.name}
                                         onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                                        className="bg-white border-neutral-300 text-neutral-900 focus:border-primary-500 focus:ring-primary-500/20"
                                         required
                                     />
                                     <div className="grid grid-cols-2 gap-4">
@@ -391,11 +387,13 @@ export default function LeadsPage() {
                                             type="email"
                                             value={formData.email}
                                             onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                                            className="bg-white border-neutral-300 text-neutral-900 focus:border-primary-500 focus:ring-primary-500/20"
                                         />
                                         <Input
                                             label="Telefone"
                                             value={formData.phone}
                                             onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                                            className="bg-white border-neutral-300 text-neutral-900 focus:border-primary-500 focus:ring-primary-500/20"
                                         />
                                     </div>
                                     <div className="grid grid-cols-2 gap-4">
@@ -403,11 +401,13 @@ export default function LeadsPage() {
                                             label="Empresa"
                                             value={formData.company}
                                             onChange={(e) => setFormData({ ...formData, company: e.target.value })}
+                                            className="bg-white border-neutral-300 text-neutral-900 focus:border-primary-500 focus:ring-primary-500/20"
                                         />
                                         <Input
                                             label="Cargo"
                                             value={formData.position}
                                             onChange={(e) => setFormData({ ...formData, position: e.target.value })}
+                                            className="bg-white border-neutral-300 text-neutral-900 focus:border-primary-500 focus:ring-primary-500/20"
                                         />
                                     </div>
                                     <div className="grid grid-cols-2 gap-4">
@@ -415,11 +415,13 @@ export default function LeadsPage() {
                                             label="Origem"
                                             value={formData.source}
                                             onChange={(e) => setFormData({ ...formData, source: e.target.value })}
+                                            className="bg-white border-neutral-300 text-neutral-900 focus:border-primary-500 focus:ring-primary-500/20"
                                         />
                                         <Input
                                             label="Interesse"
                                             value={formData.interest}
                                             onChange={(e) => setFormData({ ...formData, interest: e.target.value })}
+                                            className="bg-white border-neutral-300 text-neutral-900 focus:border-primary-500 focus:ring-primary-500/20"
                                         />
                                     </div>
                                     <div className="flex gap-2 pt-4">
@@ -452,22 +454,22 @@ export default function LeadsPage() {
                             onClick={() => setSelectedLead(null)}
                         >
                             <Card
-                                className="w-full max-w-2xl max-h-[80vh] overflow-y-auto m-4"
+                                className="w-full max-w-2xl max-h-[80vh] overflow-y-auto m-4 bg-white text-neutral-900 shadow-2xl border border-primary-500/20"
                                 onClick={(e) => e.stopPropagation()}
                             >
                                 <div className="p-6 space-y-6">
                                     <div className="flex items-start justify-between">
                                         <div>
-                                            <h2 className="text-2xl font-bold">{lead.name}</h2>
+                                            <h2 className="text-2xl font-bold text-neutral-900">{lead.name}</h2>
                                             {(lead.company || lead.position) && (
-                                                <p className="text-text-secondary mt-1">
+                                                <p className="text-neutral-600 mt-1">
                                                     {lead.company} {lead.position && `• ${lead.position}`}
                                                 </p>
                                             )}
                                         </div>
                                         <button
                                             onClick={() => setSelectedLead(null)}
-                                            className="text-text-secondary hover:text-text-primary"
+                                            className="text-neutral-500 hover:text-neutral-800"
                                         >
                                             <X className="h-6 w-6" />
                                         </button>
@@ -476,9 +478,12 @@ export default function LeadsPage() {
                                     <div className="flex items-center gap-4">
                                         {getTemperatureBadge(lead.temperature)}
                                         {getStatusBadge(lead.status)}
-                                        <span className="text-sm text-text-secondary">
-                                            Score: <span className="font-medium">{lead.score}</span>
-                                        </span>
+                                        {(() => {
+                                            const name = getAssignedName(lead);
+                                            return name ? (
+                                                <span className="text-sm text-neutral-700">Delegado: {name}</span>
+                                            ) : null;
+                                        })()}
                                     </div>
 
                                     <div className="grid grid-cols-2 gap-4">
@@ -526,18 +531,8 @@ export default function LeadsPage() {
 
                                     {(() => {
                                         const cf = (lead.customFields || {}) as Record<string, unknown>;
-                                        const tags = Array.isArray(cf.tags) ? (cf.tags as string[]) : [];
                                         return (
                                             <div className="space-y-3">
-                                                <div>
-                                                    <p className="text-sm text-text-tertiary mb-2">Categorias</p>
-                                                    <div className="flex flex-wrap gap-1">
-                                                        {tags.map((t) => (
-                                                            <Badge key={t} variant="default">{t}</Badge>
-                                                        ))}
-                                                    </div>
-                                                </div>
-                                                <TagEditor leadId={lead.id} />
                                                 <div className="grid grid-cols-2 gap-4">
                                                     {typeof cf.dealValue === 'number' && (
                                                         <div>
@@ -557,9 +552,9 @@ export default function LeadsPage() {
                                         );
                                     })()}
 
-                                    <div className="flex gap-2">
+                                <div className="flex flex-wrap gap-2 justify-end">
                                         <Button
-                                            className="flex-1"
+                                            size="sm"
                                             onClick={() => {
                                                 const contact = lead.phone || lead.email || lead.name;
                                                 if (contact) {
@@ -572,15 +567,16 @@ export default function LeadsPage() {
                                         </Button>
                                         <OutcomeButton lead={lead} onClose={() => setSelectedLead(null)} />
                                         <EditLeadButton lead={lead} />
+                                        <DelegateLeadButton lead={lead} currentUserRole={String(user?.role || '').toLowerCase()} onDelegated={() => setSelectedLead(null)} />
                                         <Button
                                             variant="danger"
-                                            className="flex-1"
+                                            size="sm"
                                             onClick={() => handleDeleteLead(lead.id)}
                                             isLoading={deleteLead.isPending}
                                         >
                                             Excluir
                                         </Button>
-                                        <Button variant="secondary" className="flex-1" onClick={() => setSelectedLead(null)}>
+                                        <Button variant="secondary" size="sm" onClick={() => setSelectedLead(null)}>
                                             Fechar
                                         </Button>
                                     </div>
@@ -596,7 +592,7 @@ export default function LeadsPage() {
 
 function OutcomeButton({ lead, onClose }: { lead: import('@/types/api').Lead; onClose: () => void }) {
     const [open, setOpen] = useState(false);
-    const [status, setStatus] = useState<'converted' | 'lost'>('converted');
+    const [status, setStatus] = useState<'Contrato fechado' | 'Em Qualificação'>('Contrato fechado');
     const [value, setValue] = useState('');
     const [reason, setReason] = useState('');
     const updateLead = useUpdateLead();
@@ -616,23 +612,23 @@ function OutcomeButton({ lead, onClose }: { lead: import('@/types/api').Lead; on
 
     return (
         <>
-            <Button className="flex-1" variant="secondary" onClick={() => setOpen(true)}>
+            <Button size="sm" variant="secondary" onClick={() => setOpen(true)}>
                 Definir Resultado
             </Button>
             {open && (
-                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50" onClick={() => setOpen(false)}>
-                    <Card className="w-full max-w-md m-4" onClick={(e) => e.stopPropagation()}>
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[1000]" onClick={() => setOpen(false)}>
+                    <Card className="w-full max-w-md m-4 bg-white text-neutral-900 shadow-2xl border border-primary-500/20" onClick={(e) => e.stopPropagation()}>
                         <div className="p-6 space-y-4">
-                            <h3 className="text-xl font-semibold">Resultado do Lead</h3>
+                            <h3 className="text-xl font-semibold text-neutral-900">Resultado do Lead</h3>
                             <div className="grid grid-cols-2 gap-2">
-                                <Button variant={status === 'converted' ? 'primary' : 'secondary'} onClick={() => setStatus('converted')}>Venda Fechada</Button>
-                                <Button variant={status === 'lost' ? 'primary' : 'secondary'} onClick={() => setStatus('lost')}>Sem Interesse</Button>
+                                <Button size="sm" variant={status === 'Contrato fechado' ? 'primary' : 'secondary'} onClick={() => setStatus('Contrato fechado')}>Venda Fechada</Button>
+                                <Button size="sm" variant={status === 'Em Qualificação' ? 'primary' : 'secondary'} onClick={() => setStatus('Em Qualificação')}>Sem Interesse</Button>
                             </div>
-                            <Input label="Valor da Venda (R$)" value={value} onChange={(e) => setValue(e.target.value)} />
-                            <Input label="Detalhes" value={reason} onChange={(e) => setReason(e.target.value)} />
+                            <Input label="Valor da Venda (R$)" value={value} onChange={(e) => setValue(e.target.value)} className="bg-white border-neutral-300 text-neutral-900 focus:border-primary-500 focus:ring-primary-500/20" />
+                            <Input label="Detalhes" value={reason} onChange={(e) => setReason(e.target.value)} className="bg-white border-neutral-300 text-neutral-900 focus:border-primary-500 focus:ring-primary-500/20" />
                             <div className="flex gap-2 pt-2">
-                                <Button className="flex-1" onClick={handleSave} isLoading={updateLead.isPending}>Salvar</Button>
-                                <Button className="flex-1" variant="secondary" onClick={() => setOpen(false)}>Cancelar</Button>
+                                <Button size="sm" onClick={handleSave} isLoading={updateLead.isPending}>Salvar</Button>
+                                <Button size="sm" variant="secondary" onClick={() => setOpen(false)}>Cancelar</Button>
                             </div>
                         </div>
                     </Card>
@@ -642,50 +638,6 @@ function OutcomeButton({ lead, onClose }: { lead: import('@/types/api').Lead; on
     );
 }
 
-function TagEditor({ leadId }: { leadId: string }) {
-    const [input, setInput] = useState('');
-    const tagsQuery = useLeadTags(leadId);
-    const addTag = useAddLeadTag();
-    const removeTag = useRemoveLeadTag();
-
-    const tags = tagsQuery.data || [];
-
-    const handleAdd = async () => {
-        const tag = input.trim();
-        if (!tag) return;
-        try {
-            await addTag.mutateAsync({ id: leadId, tag });
-            setInput('');
-        } catch {}
-    };
-
-    return (
-        <div className="space-y-2">
-            <div className="flex gap-2">
-                <Input label="Nova categoria" value={input} onChange={(e) => setInput(e.target.value)} />
-                <Button onClick={handleAdd} isLoading={addTag.isPending}>Adicionar</Button>
-            </div>
-            <div className="flex flex-wrap gap-2">
-                {tags.map((t) => (
-                    <div key={t} className="flex items-center gap-1">
-                        <Badge variant="default">{t}</Badge>
-                        <Button
-                            size="sm"
-                            variant="secondary"
-                            onClick={async () => {
-                                try {
-                                    await removeTag.mutateAsync({ id: leadId, tag: t });
-                                } catch {}
-                            }}
-                        >
-                            Remover
-                        </Button>
-                    </div>
-                ))}
-            </div>
-        </div>
-    );
-}
 
 function Comments({ leadId }: { leadId: string }) {
     const [content, setContent] = useState('');
@@ -711,7 +663,7 @@ function Comments({ leadId }: { leadId: string }) {
                     <p className="text-sm text-text-secondary">Sem comentários</p>
                 ) : (
                     comments.map((c) => (
-                        <div key={c.id} className="p-2 rounded-md bg-surface border border-border">
+                        <div key={c.id} className="p-2 rounded-md bg-neutral-100 border border-neutral-300">
                             <p className="text-sm">{c.content}</p>
                             <p className="text-xs text-text-tertiary mt-1">
                                 {formatDistanceToNow(new Date(c.createdAt), { addSuffix: true, locale: ptBR })}
@@ -720,9 +672,9 @@ function Comments({ leadId }: { leadId: string }) {
                     ))
                 )}
             </div>
-            <div className="flex gap-2">
-                <Input label="Adicionar comentário" value={content} onChange={(e) => setContent(e.target.value)} />
-                <Button onClick={handleAdd} isLoading={addComment.isPending}>Comentar</Button>
+            <div className="flex gap-2 items-end">
+                <Input label="Adicionar comentário" value={content} onChange={(e) => setContent(e.target.value)} className="bg-white border-neutral-300 text-neutral-900 focus:border-primary-500 focus:ring-primary-500/20" />
+                <Button size="sm" className="h-12 px-4 text-sm" onClick={handleAdd} isLoading={addComment.isPending}>Comentar</Button>
             </div>
         </div>
     );
@@ -738,8 +690,8 @@ function EditLeadButton({ lead }: { lead: import('@/types/api').Lead }) {
     const [source, setSource] = useState(lead.source || '');
     const [interest, setInterest] = useState(lead.interest || '');
     const [temperature, setTemperature] = useState<"hot"|"warm"|"cold">(lead.temperature);
-    const [status, setStatus] = useState<"new"|"contacted"|"qualified"|"converted"|"lost">(lead.status);
-    const [score, setScore] = useState(String(lead.score ?? 0));
+    const [status, setStatus] = useState<'Lead Novo' | 'Em Qualificação' | 'Qualificado (QUENTE)' | 'Reuniões Agendadas' | 'Proposta enviada (Follow-up)' | 'No Show (Não compareceu) (Follow-up)' | 'Contrato fechado'>(lead.status);
+    
     const updateLead = useUpdateLead();
 
     const handleSave = async () => {
@@ -756,7 +708,6 @@ function EditLeadButton({ lead }: { lead: import('@/types/api').Lead }) {
                     interest: interest || undefined,
                     temperature,
                     status,
-                    score: Number(score) || 0,
                 },
             });
             setOpen(false);
@@ -765,51 +716,178 @@ function EditLeadButton({ lead }: { lead: import('@/types/api').Lead }) {
 
     return (
         <>
-            <Button className="flex-1" variant="secondary" onClick={() => setOpen(true)}>Editar</Button>
+            <Button size="sm" variant="secondary" onClick={() => setOpen(true)}>Editar</Button>
             {open && (
-                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50" onClick={() => setOpen(false)}>
-                    <Card className="w-full max-w-2xl max-h-[80vh] overflow-y-auto m-4" onClick={(e) => e.stopPropagation()}>
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[1000]" onClick={() => setOpen(false)}>
+                    <Card className="w-full max-w-2xl max-h-[80vh] overflow-y-auto m-4 bg-white text-neutral-900 shadow-2xl border border-primary-500/20" onClick={(e) => e.stopPropagation()}>
                         <div className="p-6 space-y-4">
-                            <h3 className="text-xl font-semibold">Editar Lead</h3>
-                            <Input label="Nome" value={name} onChange={(e) => setName(e.target.value)} />
+                            <h3 className="text-xl font-semibold text-neutral-900">Editar Lead</h3>
+                            <Input label="Nome" value={name} onChange={(e) => setName(e.target.value)} className="bg-white border-neutral-300 text-neutral-900 focus:border-primary-500 focus:ring-primary-500/20" />
                             <div className="grid grid-cols-2 gap-4">
-                                <Input label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-                                <Input label="Telefone" value={phone} onChange={(e) => setPhone(e.target.value)} />
+                                <Input label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="bg-white border-neutral-300 text-neutral-900 focus:border-primary-500 focus:ring-primary-500/20" />
+                                <Input label="Telefone" value={phone} onChange={(e) => setPhone(e.target.value)} className="bg-white border-neutral-300 text-neutral-900 focus:border-primary-500 focus:ring-primary-500/20" />
                             </div>
                             <div className="grid grid-cols-2 gap-4">
-                                <Input label="Empresa" value={company} onChange={(e) => setCompany(e.target.value)} />
-                                <Input label="Cargo" value={position} onChange={(e) => setPosition(e.target.value)} />
+                                <Input label="Empresa" value={company} onChange={(e) => setCompany(e.target.value)} className="bg-white border-neutral-300 text-neutral-900 focus:border-primary-500 focus:ring-primary-500/20" />
+                                <Input label="Cargo" value={position} onChange={(e) => setPosition(e.target.value)} className="bg-white border-neutral-300 text-neutral-900 focus:border-primary-500 focus:ring-primary-500/20" />
                             </div>
                             <div className="grid grid-cols-2 gap-4">
-                                <Input label="Origem" value={source} onChange={(e) => setSource(e.target.value)} />
-                                <Input label="Interesse" value={interest} onChange={(e) => setInterest(e.target.value)} />
+                                <Input label="Origem" value={source} onChange={(e) => setSource(e.target.value)} className="bg-white border-neutral-300 text-neutral-900 focus:border-primary-500 focus:ring-primary-500/20" />
+                                <Input label="Interesse" value={interest} onChange={(e) => setInterest(e.target.value)} className="bg-white border-neutral-300 text-neutral-900 focus:border-primary-500 focus:ring-primary-500/20" />
                             </div>
-                            <div className="grid grid-cols-3 gap-4">
+                            <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <p className="text-sm text-text-tertiary mb-1">Temperatura</p>
-                                    <div className="flex gap-2">
-                                        {(['hot','warm','cold'] as const).map((t) => (
-                                            <Button key={t} size="sm" variant={temperature===t? 'primary':'secondary'} onClick={() => setTemperature(t)}>
-                                                {t}
-                                            </Button>
-                                        ))}
-                                    </div>
+                                    <select
+                                        className="w-full border border-neutral-300 rounded-md p-2 text-sm"
+                                        value={temperature}
+                                        onChange={(e) => setTemperature(e.target.value as 'hot' | 'warm' | 'cold')}
+                                    >
+                                        <option value="hot">Quente</option>
+                                        <option value="warm">Morno</option>
+                                        <option value="cold">Frio</option>
+                                    </select>
                                 </div>
                                 <div>
                                     <p className="text-sm text-text-tertiary mb-1">Status</p>
-                                    <div className="flex flex-wrap gap-2">
-                                        {(['new','contacted','qualified','converted','lost'] as const).map((s) => (
-                                            <Button key={s} size="sm" variant={status===s? 'primary':'secondary'} onClick={() => setStatus(s)}>
-                                                {s}
-                                            </Button>
-                                        ))}
-                                    </div>
+                                    {(() => {
+                                        const STAGES: Array<'Lead Novo' | 'Em Qualificação' | 'Qualificado (QUENTE)' | 'Reuniões Agendadas' | 'Proposta enviada (Follow-up)' | 'No Show (Não compareceu) (Follow-up)' | 'Contrato fechado'> = [
+                                            'Lead Novo',
+                                            'Em Qualificação',
+                                            'Qualificado (QUENTE)',
+                                            'Reuniões Agendadas',
+                                            'Proposta enviada (Follow-up)',
+                                            'No Show (Não compareceu) (Follow-up)',
+                                            'Contrato fechado',
+                                        ];
+                                        return (
+                                            <select
+                                                className="w-full border border-neutral-300 rounded-md p-2 text-sm"
+                                                value={status}
+                                                onChange={(e) => setStatus(e.target.value as typeof STAGES[number])}
+                                            >
+                                                {STAGES.map((s) => (
+                                                    <option key={s} value={s}>{s}</option>
+                                                ))}
+                                            </select>
+                                        );
+                                    })()}
                                 </div>
-                                <Input label="Score" type="number" value={score} onChange={(e) => setScore(e.target.value)} />
                             </div>
                             <div className="flex gap-2 pt-2">
-                                <Button className="flex-1" onClick={handleSave} isLoading={updateLead.isPending}>Salvar</Button>
-                                <Button className="flex-1" variant="secondary" onClick={() => setOpen(false)}>Cancelar</Button>
+                                <Button size="sm" onClick={handleSave} isLoading={updateLead.isPending}>Salvar</Button>
+                                <Button size="sm" variant="secondary" onClick={() => setOpen(false)}>Cancelar</Button>
+                            </div>
+                        </div>
+                    </Card>
+                </div>
+            )}
+        </>
+    );
+}
+
+function DelegateLeadButton({ lead, currentUserRole, onDelegated }: { lead: import('@/types/api').Lead; currentUserRole: string; onDelegated: () => void }) {
+    const canDelegate = ['admin', 'manager', 'sdr'].includes(currentUserRole);
+    const [open, setOpen] = useState(false);
+    const [loadingUsers, setLoadingUsers] = useState(false);
+    const [users, setUsers] = useState<Array<{ id: string; name: string; email: string; role: string; isActive: boolean }>>([]);
+    const [query, setQuery] = useState('');
+    const [suggestions, setSuggestions] = useState<Array<{ id: string; name: string; email: string }>>([]);
+    const [selectedUserId, setSelectedUserId] = useState<string>('');
+    const [searching, setSearching] = useState(false);
+    const delegateLead = useDelegateLead();
+
+    const handleOpen = async () => {
+        if (!canDelegate) return;
+        setOpen(true);
+        try {
+            setLoadingUsers(true);
+            const list = await api.getConsultants();
+            setUsers(list);
+            setSuggestions(list.map((u) => ({ id: u.id, name: u.name, email: u.email })));
+        } finally {
+            setLoadingUsers(false);
+        }
+    };
+
+    const handleSearch = async (value: string) => {
+        setQuery(value);
+        const q = value.trim();
+        if (!q) {
+            setSuggestions(users.map((u) => ({ id: u.id, name: u.name, email: u.email })));
+            return;
+        }
+        try {
+            setSearching(true);
+            const list = await api.searchUsers(q);
+            setSuggestions(list.map((u) => ({ id: u.id, name: u.name, email: u.email })));
+        } finally {
+            setSearching(false);
+        }
+    };
+
+    const handleConfirm = async () => {
+        let targetId = selectedUserId;
+        if (!targetId) {
+            const exact = suggestions.find((u) => u.email.toLowerCase() === query.toLowerCase() || u.name.toLowerCase() === query.toLowerCase());
+            if (exact) targetId = exact.id;
+        }
+        if (!targetId) {
+            toast.error('Selecione um usuário');
+            return;
+        }
+        try {
+            await delegateLead.mutateAsync({ id: lead.id, assignedToId: targetId });
+            setOpen(false);
+            onDelegated();
+        } catch {}
+    };
+
+    return (
+        <>
+            <Button size="sm" variant="secondary" className="h-10 px-4 text-sm" onClick={handleOpen} disabled={!canDelegate}>
+                Delegar
+            </Button>
+            {open && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[1000]" onClick={() => setOpen(false)}>
+                    <Card className="w-full max-w-lg max-h-[80vh] overflow-y-auto scrollbar-thin m-4 bg-white text-neutral-900 shadow-2xl border border-primary-500/20" onClick={(e) => e.stopPropagation()}>
+                        <div className="p-6 space-y-4">
+                            <h3 className="text-xl font-semibold text-neutral-900">Direcionar Lead</h3>
+                            <div className="space-y-2">
+                                <Input
+                                    label="Usuário"
+                                    placeholder="Digite nome ou email"
+                                    value={query}
+                                    onChange={(e) => handleSearch(e.target.value)}
+                                    className="bg-white border-neutral-300 text-neutral-900 focus:border-primary-500 focus:ring-primary-500/20"
+                                />
+                                <div className="border border-neutral-300 rounded-md max-h-48 overflow-auto">
+                                    {loadingUsers || searching ? (
+                                        <div className="p-3 text-sm text-text-secondary">Carregando...</div>
+                                    ) : suggestions.length === 0 ? (
+                                        <div className="p-3 text-sm text-text-secondary">Nenhum usuário encontrado</div>
+                                    ) : (
+                                        <ul>
+                                            {suggestions.map((u) => (
+                                                <li
+                                                    key={u.id}
+                                                    className={`px-3 py-2 text-sm cursor-pointer ${selectedUserId === u.id ? 'bg-neutral-100' : ''}`}
+                                                    onClick={() => setSelectedUserId(u.id)}
+                                                >
+                                                    {u.name} ({u.email})
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    )}
+                                </div>
+                            </div>
+                            <div className="flex gap-2 pt-2">
+                                <Button size="sm" className="h-12 px-5 text-sm" onClick={handleConfirm} isLoading={delegateLead.isPending}>
+                                    Confirmar
+                                </Button>
+                                <Button size="sm" variant="secondary" className="h-12 px-5 text-sm" onClick={() => setOpen(false)}>
+                                    Cancelar
+                                </Button>
                             </div>
                         </div>
                     </Card>

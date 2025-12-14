@@ -7,6 +7,9 @@ export class PrismaService
   implements OnModuleInit, OnModuleDestroy
 {
   async onModuleInit() {
+    if (process.env.USE_MOCK_AUTH === 'true') {
+      return;
+    }
     await this.$connect();
   }
 

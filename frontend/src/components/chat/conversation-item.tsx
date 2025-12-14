@@ -45,7 +45,7 @@ export function ConversationItem({
             <div className="flex-1 min-w-0">
                 <div className="flex items-start justify-between gap-2 mb-1">
                     <div className="min-w-0">
-                        <h4 className="font-medium truncate">{contactName}</h4>
+                        <h4 className="font-medium truncate text-neutral-900">{contactName}</h4>
                         {contactIdentifier && (
                             <p className="text-xs text-text-tertiary truncate">{contactIdentifier}</p>
                         )}

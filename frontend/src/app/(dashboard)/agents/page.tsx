@@ -11,9 +11,6 @@ import {
     Plus,
     Bot,
     MoreVertical,
-    MessageSquare,
-    Clock,
-    Star,
     Settings,
     X,
 } from 'lucide-react';
@@ -198,7 +195,10 @@ export default function AgentsPage() {
                                         <Button
                                             variant="danger"
                                             className="flex-1"
-                                            onClick={() => setAgentToDelete(agent.id)}
+                                            onClick={() => {
+                                                setSelectedAgent(null);
+                                                setAgentToDelete(agent.id);
+                                            }}
                                             isLoading={deleteAgent.isPending}
                                         >
                                             Excluir
@@ -230,16 +230,16 @@ export default function AgentsPage() {
             {/* Create/Edit Agent Modal */}
             {showCreateModal && (
                 <div
-                    className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50"
+                    className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[1000]"
                     onClick={closeModal}
                 >
                     <Card
-                        className="w-full max-w-2xl max-h-[80vh] overflow-y-auto m-4"
+                        className="w-full max-w-2xl max-h-[80vh] overflow-y-auto m-4 bg-white text-neutral-900"
                         onClick={(e) => e.stopPropagation()}
                     >
                         <div className="p-6">
                             <div className="flex items-start justify-between mb-6">
-                                <h2 className="text-2xl font-bold">
+                                <h2 className="text-2xl font-bold text-neutral-900">
                                     {editingAgentId ? 'Editar Agente' : 'Novo Agente'}
                                 </h2>
                                 <button
@@ -328,7 +328,7 @@ export default function AgentsPage() {
 
                 return (
                     <div
-                        className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50"
+                        className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[1000]"
                         onClick={() => setSelectedAgent(null)}
                     >
                         <Card
@@ -338,7 +338,7 @@ export default function AgentsPage() {
                             <div className="p-6 space-y-6">
                                 <div className="flex items-start justify-between">
                                     <div>
-                                        <h2 className="text-2xl font-bold">{agent.name}</h2>
+                                        <h2 className="text-2xl font-bold text-neutral-900">{agent.name}</h2>
                                         {agent.description && (
                                             <p className="text-text-secondary mt-1">{agent.description}</p>
                                         )}
@@ -397,7 +397,10 @@ export default function AgentsPage() {
                                     <Button
                                         variant="danger"
                                         className="flex-1"
-                                        onClick={() => setAgentToDelete(agent.id)}
+                                        onClick={() => {
+                                            setSelectedAgent(null);
+                                            setAgentToDelete(agent.id);
+                                        }}
                                         isLoading={deleteAgent.isPending}
                                     >
                                         Excluir
@@ -416,7 +419,7 @@ export default function AgentsPage() {
 
                 return (
                     <div
-                        className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50"
+                        className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[1000]"
                         onClick={() => setAgentToDelete(null)}
                     >
                         <Card

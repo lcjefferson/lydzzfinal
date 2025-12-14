@@ -55,4 +55,36 @@ export class AnalyticsService {
       byTemperature,
     };
   }
+
+  async getContractsReport() {
+    const closed = await this.prisma.lead.findMany({
+      where: { status: 'Contrato fechado' },
+      orderBy: { updatedAt: 'desc' },
+      include: { assignedTo: true },
+    });
+    return closed;
+  }
+
+  async getConsultantReport() {
+    const users = await this.prisma.user.findMany();
+    const result = await Promise.all(
+      users.map(async (u) => {
+        const leads = await this.prisma.lead.findMany({ where: { assignedToId: u.id } });
+        const closed = leads.filter((l) => l.status === 'Contrato fechado').length;
+        const active = leads.filter((l) => l.status !== 'Contrato fechado').length;
+        const total = leads.length;
+        const conversionRate = total ? Math.round((closed / total) * 100) : 0;
+        return {
+          userId: u.id,
+          name: u.name,
+          email: u.email,
+          closed,
+          active,
+          total,
+          conversionRate,
+        };
+      }),
+    );
+    return result;
+  }
 }

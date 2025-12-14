@@ -10,7 +10,7 @@ export function Badge({ className, variant = 'default', ...props }: BadgeProps) 
         hot: 'badge-hot',
         warm: 'badge-warm',
         cold: 'badge-cold',
-        default: 'badge bg-surface text-text-primary',
+        default: 'badge bg-surface text-neutral-900',
         success: 'badge bg-success text-white',
         warning: 'badge bg-warning text-white',
         error: 'badge bg-error text-white',

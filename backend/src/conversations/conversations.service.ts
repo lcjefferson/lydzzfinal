@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateConversationDto } from './dto/create-conversation.dto';
 import { UpdateConversationDto } from './dto/update-conversation.dto';
-import { Conversation } from '@prisma/client';
+import { Conversation, Prisma } from '@prisma/client';
 
 @Injectable()
 export class ConversationsService {
@@ -27,7 +27,7 @@ export class ConversationsService {
         data: {
           name: dto.contactName || dto.contactIdentifier,
           phone: dto.contactIdentifier,
-          status: 'new',
+          status: 'Lead Novo',
           temperature: 'cold',
           source: 'conversation',
           organizationId: organization.id,
@@ -49,8 +49,23 @@ export class ConversationsService {
     });
   }
 
-  async findAll(): Promise<Conversation[]> {
+  async findAll(
+    userId?: string,
+    role?: string,
+    _organizationId?: string,
+  ): Promise<Conversation[]> {
+    void _organizationId;
+    const where: Prisma.ConversationWhereInput = {};
+    Object.assign(where, { channel: { type: { not: 'internal' } } });
+    const r = String(role || '').toLowerCase();
+    if (r && r !== 'admin' && r !== 'manager') {
+      Object.assign(where, {
+        OR: [{ assignedToId: userId }, { lead: { assignedToId: userId } }],
+      });
+    }
+
     return this.prisma.conversation.findMany({
+      where,
       include: {
         messages: {
           orderBy: { createdAt: 'desc' },
@@ -72,6 +87,7 @@ export class ConversationsService {
         agent: true,
         assignedTo: true,
         lead: true,
+        channel: true,
       },
     });
   }

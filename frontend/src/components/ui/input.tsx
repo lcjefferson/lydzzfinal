@@ -11,14 +11,14 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
         return (
             <div className="w-full">
                 {label && (
-                    <label className="block text-sm font-medium text-text-primary mb-2">
+                    <label className="block text-sm font-medium text-neutral-900 mb-2">
                         {label}
                     </label>
                 )}
                 <input
                     type={type}
                     className={cn(
-                        'input',
+                        'input placeholder:text-neutral-500',
                         error && 'border-error focus:border-error focus:ring-error/20',
                         className
                     )}

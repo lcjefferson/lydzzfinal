@@ -9,7 +9,7 @@ export function middleware(request: NextRequest) {
     const isAuthPage = request.nextUrl.pathname.startsWith('/login') ||
         request.nextUrl.pathname.startsWith('/register');
 
-    const isPublicPage = request.nextUrl.pathname === '/' || isAuthPage;
+    // const isPublicPage = request.nextUrl.pathname === '/' || isAuthPage;
 
     // For protected routes, we'll let the client-side AuthContext handle the redirect
     // This is because tokens are stored in localStorage, not cookies

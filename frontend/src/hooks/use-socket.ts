@@ -31,9 +31,12 @@ export function useSocket() {
         socket: socketService.getSocket(),
         joinConversation: socketService.joinConversation.bind(socketService),
         leaveConversation: socketService.leaveConversation.bind(socketService),
+        emitTyping: socketService.emitTyping.bind(socketService),
         onNewMessage: socketService.onNewMessage.bind(socketService),
         offNewMessage: socketService.offNewMessage.bind(socketService),
         onMessageCreated: socketService.onMessageCreated.bind(socketService),
         offMessageCreated: socketService.offMessageCreated.bind(socketService),
+        onTyping: socketService.onTyping.bind(socketService),
+        offTyping: socketService.offTyping.bind(socketService),
     };
 }

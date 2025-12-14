@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Header } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
@@ -133,7 +133,7 @@ export default function ChannelsPage() {
                                                     <Icon className="h-6 w-6 text-white" />
                                                 </div>
                                                 <div>
-                                                    <h3 className="font-semibold">{channel.name}</h3>
+                                                    <h3 className="font-semibold text-neutral-900">{channel.name}</h3>
                                                     <p className="text-sm text-text-secondary capitalize">{channel.type}</p>
                                                 </div>
                                             </div>
@@ -204,16 +204,16 @@ export default function ChannelsPage() {
             {/* Create Channel Modal */}
             {showCreateModal && (
                 <div
-                    className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50"
+                    className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[1000]"
                     onClick={() => setShowCreateModal(false)}
                 >
                     <Card
-                        className="w-full max-w-md m-4"
+                        className="w-full max-w-md m-4 bg-white text-neutral-900"
                         onClick={(e) => e.stopPropagation()}
                     >
                         <div className="p-6">
                             <div className="flex items-start justify-between mb-6">
-                                <h2 className="text-2xl font-bold">Novo Canal</h2>
+                                <h2 className="text-2xl font-bold text-neutral-900">Novo Canal</h2>
                                 <button
                                     onClick={() => setShowCreateModal(false)}
                                     className="text-text-secondary hover:text-text-primary"
@@ -272,11 +272,11 @@ export default function ChannelsPage() {
             {/* Delete Confirmation Modal */}
             {channelToDelete && (
                 <div
-                    className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50"
+                    className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[1000]"
                     onClick={() => setChannelToDelete(null)}
                 >
-                    <Card className="w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
-                        <h2 className="text-xl font-bold mb-4">Confirmar Exclusão</h2>
+                    <Card className="w-full max-w-md p-6 bg-white text-neutral-900" onClick={(e) => e.stopPropagation()}>
+                        <h2 className="text-xl font-bold mb-4 text-neutral-900">Confirmar Exclusão</h2>
                         <p className="mb-6">Tem certeza que deseja excluir este canal?</p>
                         <div className="flex gap-2 justify-end">
                             <Button variant="secondary" onClick={() => setChannelToDelete(null)}>
@@ -295,17 +295,17 @@ export default function ChannelsPage() {
                 const channel = currentChannel;
                 return (
                     <div
-                        className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50"
+                        className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[1000]"
                         onClick={() => setSelectedChannel(null)}
                     >
                         <Card
-                            className="w-full max-w-2xl m-4 max-h-[90vh] overflow-y-auto"
+                            className="w-full max-w-2xl m-4 max-h-[90vh] overflow-y-auto bg-white text-neutral-900"
                             onClick={(e) => e.stopPropagation()}
                         >
                             <div className="p-6">
                                 <div className="flex items-start justify-between mb-6">
                                     <div>
-                                        <h2 className="text-2xl font-bold">Configurar Canal</h2>
+                                        <h2 className="text-2xl font-bold text-neutral-900">Configurar Canal</h2>
                                         <p className="text-sm text-text-secondary mt-1">{channel.name}</p>
                                     </div>
                                     <button

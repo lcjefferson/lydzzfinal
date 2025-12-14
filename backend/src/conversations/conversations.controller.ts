@@ -7,7 +7,9 @@ import {
   Param,
   Delete,
   UseGuards,
+  Req,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { ConversationsService } from './conversations.service';
 import { CreateConversationDto } from './dto/create-conversation.dto';
 import { UpdateConversationDto } from './dto/update-conversation.dto';
@@ -24,8 +26,22 @@ export class ConversationsController {
   }
 
   @Get()
-  findAll() {
-    return this.conversationsService.findAll();
+  findAll(
+    @Req()
+    req: Request & {
+      user?: { id: string; role: string; organizationId: string };
+    },
+  ) {
+    const user = req.user as {
+      id: string;
+      role: string;
+      organizationId: string;
+    };
+    return this.conversationsService.findAll(
+      user?.id,
+      user?.role,
+      user?.organizationId,
+    );
   }
 
   @Get(':id')

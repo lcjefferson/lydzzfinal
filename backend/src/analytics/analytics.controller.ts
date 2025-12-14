@@ -21,4 +21,14 @@ export class AnalyticsController {
   getLeadStats() {
     return this.analyticsService.getLeadStats();
   }
+
+  @Get('reports/contracts')
+  getContractsReport() {
+    return this.analyticsService.getContractsReport();
+  }
+
+  @Get('reports/consultants')
+  getConsultantReport() {
+    return this.analyticsService.getConsultantReport();
+  }
 }
