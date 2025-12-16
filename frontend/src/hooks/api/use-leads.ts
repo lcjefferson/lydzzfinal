@@ -144,11 +144,16 @@ export function useDelegateLead() {
         mutationFn: async ({ id, assignedToId }: { id: string; assignedToId: string }) => api.delegateLead(id, assignedToId),
         onMutate: async (vars) => {
             await queryClient.cancelQueries({ queryKey: ['leads'] });
-            const prev = queryClient.getQueriesData<import('@/types/api').Lead[]>({ queryKey: ['leads'] });
+            const prev = queryClient.getQueriesData({ queryKey: ['leads'] });
             prev.forEach(([key, data]) => {
                 if (!data) return;
-                const next = data.map((l) => (l.id === vars.id ? { ...l, assignedToId: vars.assignedToId } : l));
-                queryClient.setQueryData(key, next);
+                if (Array.isArray(data)) {
+                    const next = data.map((l) => (l.id === vars.id ? { ...l, assignedToId: vars.assignedToId } : l));
+                    queryClient.setQueryData(key, next);
+                } else if (typeof data === 'object' && (data as { id?: string }).id === vars.id) {
+                    const next = { ...(data as Record<string, unknown>), assignedToId: vars.assignedToId };
+                    queryClient.setQueryData(key, next);
+                }
             });
             return { prev };
         },

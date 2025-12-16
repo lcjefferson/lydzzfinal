@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { ConversationItem } from '@/components/chat/conversation-item';
 import { MessageBubble } from '@/components/chat/message-bubble';
-import { Search, Send, Paperclip, MoreVertical, User, Wifi, WifiOff } from 'lucide-react';
+import { Search, Send, Paperclip, MoreVertical, Wifi, WifiOff, Mail, Phone, Building, X } from 'lucide-react';
 import { useConversations, useUpdateConversation } from '@/hooks/api/use-conversations';
 import { useMessages, useCreateMessage } from '@/hooks/api/use-messages';
 import { useSocket } from '@/hooks/use-socket';
@@ -16,7 +16,10 @@ import { useQueryClient } from '@tanstack/react-query';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useSearchParams } from 'next/navigation';
-import { useLead, useLeadComments, useAddLeadComment, useUpdateLead } from '@/hooks/api/use-leads';
+import { useLead, useLeadComments, useAddLeadComment, useUpdateLead, useDelegateLead } from '@/hooks/api/use-leads';
+import { useAuth } from '@/contexts/auth-context';
+import { api } from '@/lib/api';
+import { toast } from 'sonner';
 
 export default function ConversationsPage() {
     const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
@@ -25,6 +28,8 @@ export default function ConversationsPage() {
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const queryClient = useQueryClient();
     const [showLeadModal, setShowLeadModal] = useState(false);
+    const { user } = useAuth();
+    const [users, setUsers] = useState<Array<{ id: string; name: string }>>([]);
 
     const { data: conversations, isLoading: conversationsLoading } = useConversations();
     const searchParams = useSearchParams();
@@ -83,6 +88,58 @@ export default function ConversationsPage() {
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages]);
+
+    useEffect(() => {
+        (async () => {
+            try {
+                const list = await api.getConsultants();
+                setUsers(list.map((u) => ({ id: u.id, name: u.name })));
+            } catch {}
+        })();
+    }, []);
+
+    const getTemperatureBadge = (temp: 'hot' | 'warm' | 'cold') => {
+        const variants = {
+            hot: 'hot' as const,
+            warm: 'warm' as const,
+            cold: 'cold' as const,
+        };
+        const labels = {
+            hot: 'QUENTE',
+            warm: 'MORNO',
+            cold: 'FRIO',
+        };
+        return <Badge variant={variants[temp]} className="w-24 justify-center">{labels[temp]}</Badge>;
+    };
+
+    const getStatusBadge = (status: string) => {
+        const variants: Record<string, 'default' | 'warning' | 'success' | 'error'> = {
+            'Lead Novo': 'default',
+            'Em Qualificação': 'warning',
+            'Qualificado (QUENTE)': 'success',
+            'Reuniões Agendadas': 'warning',
+            'Proposta enviada (Follow-up)': 'warning',
+            'No Show (Não compareceu) (Follow-up)': 'error',
+            'Contrato fechado': 'success',
+        };
+        return <Badge variant={variants[status] || 'default'}>{status}</Badge>;
+    };
+
+    const getAssignedName = (l: unknown) => {
+        const a = l as { assignedTo?: { name?: string }; assignedToId?: string };
+        const relNameRaw = (a?.assignedTo?.name || '').trim();
+        if (relNameRaw) {
+            const rel = relNameRaw.toLowerCase();
+            if (rel === 'consultant user') return '';
+            return relNameRaw;
+        }
+        const id = (a?.assignedToId || '').trim();
+        if (!id) return '';
+        const match = users.find((u) => u.id === id);
+        const nameRaw = (match?.name || '').trim();
+        if (nameRaw && nameRaw.toLowerCase() === 'consultant user') return '';
+        return nameRaw;
+    };
 
     const handleSendMessage = async () => {
         if (messageInput.trim() && effectiveSelectedId) {
@@ -306,71 +363,114 @@ export default function ConversationsPage() {
                 {selectedConversationId && currentConversation && (
                     <div className="w-80 border-l border-border bg-background-secondary p-6 overflow-y-auto scrollbar-thin">
                         <div className="space-y-6">
-                            {/* Lead Info */}
-                            <div>
-                                <div className="flex items-center gap-3 mb-4">
-                                    <div className="h-12 w-12 rounded-full bg-gradient-primary flex items-center justify-center">
-                                        <User className="h-6 w-6 text-white" />
-                                    </div>
+                            <div className="space-y-4">
+                                <div className="flex items-start justify-between">
                                     <div>
-                                        <h3 className="font-semibold text-neutral-900">{currentConversation.contactName || currentConversation.lead?.name || currentConversation.contactIdentifier}</h3>
-                                        <Badge variant="default">Contato</Badge>
+                                        <h3 className="text-xl font-semibold text-neutral-900">
+                                            {currentConversation.lead?.name || currentConversation.contactName || currentConversation.contactIdentifier}
+                                        </h3>
+                                        {(currentConversation.lead?.company || currentConversation.lead?.position) && (
+                                            <p className="text-neutral-700 mt-1">
+                                                {currentConversation.lead?.company} {currentConversation.lead?.position && `• ${currentConversation.lead?.position}`}
+                                            </p>
+                                        )}
                                     </div>
                                 </div>
-
-                                <div className="space-y-3">
-                                    <div>
-                                        <p className="text-sm text-text-tertiary">Identificador</p>
-                                        <p className="text-sm text-neutral-900">{currentConversation.contactIdentifier || currentConversation.lead?.email || currentConversation.lead?.phone}</p>
+                                {currentConversation.lead && (
+                                    <div className="flex items-center gap-3">
+                                        {getTemperatureBadge(currentConversation.lead.temperature)}
+                                        {getStatusBadge(currentConversation.lead.status)}
+                                        {(() => {
+                                            const name = getAssignedName(currentConversation.lead);
+                                            return name ? (
+                                                <span className="text-sm text-neutral-700">Delegado: {name}</span>
+                                            ) : null;
+                                        })()}
                                     </div>
+                                )}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    {(currentConversation.lead?.email || currentConversation.contactIdentifier?.includes('@')) && (
+                                        <div>
+                                            <p className="text-sm text-text-tertiary mb-1">Email</p>
+                                            <p className="text-sm flex items-center gap-2">
+                                                <Mail className="h-4 w-4" />
+                                                {currentConversation.lead?.email || currentConversation.contactIdentifier}
+                                            </p>
+                                        </div>
+                                    )}
+                                    {(currentConversation.lead?.phone || (currentConversation.contactIdentifier && !currentConversation.contactIdentifier.includes('@'))) && (
+                                        <div>
+                                            <p className="text-sm text-text-tertiary mb-1">Telefone</p>
+                                            <p className="text-sm flex items-center gap-2">
+                                                <Phone className="h-4 w-4" />
+                                                {currentConversation.lead?.phone || currentConversation.contactIdentifier}
+                                            </p>
+                                        </div>
+                                    )}
+                                    {currentConversation.lead?.company && (
+                                        <div>
+                                            <p className="text-sm text-text-tertiary mb-1">Empresa</p>
+                                            <p className="text-sm flex items-center gap-2">
+                                                <Building className="h-4 w-4" />
+                                                {currentConversation.lead.company}
+                                            </p>
+                                        </div>
+                                    )}
+                                    {currentConversation.lead?.source && (
+                                        <div>
+                                            <p className="text-sm text-text-tertiary mb-1">Origem</p>
+                                            <Badge variant="default">{currentConversation.lead.source}</Badge>
+                                        </div>
+                                    )}
+                                </div>
+                                {currentConversation.lead?.interest && (
                                     <div>
-                                        <p className="text-sm text-text-tertiary">Status</p>
-                                        <p className="text-sm capitalize">{currentConversation.status}</p>
+                                        <p className="text-sm text-text-tertiary mb-2">Interesse</p>
+                                        <p className="text-sm">{currentConversation.lead.interest}</p>
                                     </div>
-                                    <div>
-                                        <p className="text-sm text-text-tertiary">Última mensagem</p>
-                                        <p className="text-sm">
-                                            {formatDistanceToNow(new Date(currentConversation.lastMessageAt), {
-                                                addSuffix: true,
-                                                locale: ptBR,
-                                            })}
-                                        </p>
-                                    </div>
+                                )}
+                                <div>
+                                    <p className="text-sm text-text-tertiary mb-1">Última mensagem</p>
+                                    <p className="text-sm">
+                                        {formatDistanceToNow(new Date(currentConversation.lastMessageAt), {
+                                            addSuffix: true,
+                                            locale: ptBR,
+                                        })}
+                                    </p>
                                 </div>
                             </div>
-
-                            {/* Actions */}
-                            <div>
-                                <h4 className="font-semibold mb-3">🎯 Ações</h4>
-                                <div className="space-y-2">
-                                    <Button
-                                        variant="primary"
-                                        className="w-full"
-                                        onClick={handleAssignConversation}
-                                        disabled={updateConversation.isPending}
-                                    >
-                                        Assumir Conversa
-                                    </Button>
-                                    <Button
-                                        variant="secondary"
-                                        className="w-full"
-                                        onClick={() => setShowLeadModal(true)}
-                                        disabled={!currentConversation.lead?.id}
-                                    >
-                                        Ver detalhes do Lead
-                                    </Button>
-                                    <Button variant="secondary" className="w-full">
-                                        Transferir
-                                    </Button>
-                                    <Button
-                                        variant="ghost"
-                                        className="w-full"
-                                        onClick={handleCloseConversation}
-                                        disabled={updateConversation.isPending}
-                                    >
-                                        Fechar
-                                    </Button>
-                                </div>
+                            <div className="flex flex-col gap-2">
+                                <Button
+                                    variant="primary"
+                                    className="w-full"
+                                    onClick={handleAssignConversation}
+                                    disabled={updateConversation.isPending}
+                                >
+                                    Assumir Conversa
+                                </Button>
+                                <Button
+                                    variant="secondary"
+                                    className="w-full"
+                                    onClick={() => setShowLeadModal(true)}
+                                    disabled={!currentConversation.lead?.id}
+                                >
+                                    Ver detalhes do Lead
+                                </Button>
+                                {currentConversation.lead && (
+                                    <DelegateLeadButton
+                                        lead={currentConversation.lead}
+                                        currentUserRole={String(user?.role || '').toLowerCase()}
+                                        onDelegated={() => {}}
+                                    />
+                                )}
+                                <Button
+                                    variant="ghost"
+                                    className="w-full"
+                                    onClick={handleCloseConversation}
+                                    disabled={updateConversation.isPending}
+                                >
+                                    Fechar
+                                </Button>
                             </div>
                         </div>
                     </div>
@@ -395,132 +495,423 @@ export default function ConversationsPage() {
 
 function LeadDetailsModalContent({ leadId, onClose }: { leadId: string; onClose: () => void }) {
     const { data: lead } = useLead(leadId);
-    const commentsQuery = useLeadComments(leadId);
-    const addComment = useAddLeadComment();
-    const updateLead = useUpdateLead();
-    const [editing, setEditing] = useState(false);
-    const [content, setContent] = useState('');
-    const [name, setName] = useState('');
-    const [email, setEmail] = useState('');
-    const [phone, setPhone] = useState('');
-    const [company, setCompany] = useState('');
-    const [position, setPosition] = useState('');
-    const [source, setSource] = useState('');
-    const [interest, setInterest] = useState('');
-    const [status, setStatus] = useState('');
-    const [temperature, setTemperature] = useState<'hot' | 'warm' | 'cold'>('cold');
-
+    const { user } = useAuth();
     if (!lead) return null;
-
-    const comments = commentsQuery.data || [];
-
-    const handleSave = async () => {
-        try {
-            await updateLead.mutateAsync({
-                id: lead.id,
-                data: { name, email, phone, company, position, source, interest, status, temperature },
-            });
-            setEditing(false);
-        } catch {}
+    const getTemperatureBadge = (temp: 'hot' | 'warm' | 'cold') => {
+        const variants = { hot: 'hot' as const, warm: 'warm' as const, cold: 'cold' as const };
+        const labels = { hot: 'QUENTE', warm: 'MORNO', cold: 'FRIO' };
+        return <Badge variant={variants[temp]} className="w-24 justify-center">{labels[temp]}</Badge>;
     };
-
-    const handleAddComment = async () => {
-        const text = content.trim();
-        if (!text) return;
-        try {
-            await addComment.mutateAsync({ id: lead.id, content: text });
-            setContent('');
-        } catch {}
+    const getStatusBadge = (status: string) => {
+        const variants: Record<string, 'default' | 'warning' | 'success' | 'error'> = {
+            'Lead Novo': 'default',
+            'Em Qualificação': 'warning',
+            'Qualificado (QUENTE)': 'success',
+            'Reuniões Agendadas': 'warning',
+            'Proposta enviada (Follow-up)': 'warning',
+            'No Show (Não compareceu) (Follow-up)': 'error',
+            'Contrato fechado': 'success',
+        };
+        return <Badge variant={variants[status] || 'default'}>{status}</Badge>;
     };
-
     return (
         <div className="p-6 space-y-6">
             <div className="flex items-start justify-between">
                 <div>
-                    <h2 className="text-xl font-semibold text-neutral-900">{lead.name}</h2>
-                    <p className="text-sm text-text-tertiary">{lead.email || lead.phone || 'Sem contato'}</p>
-                </div>
-                <div className="flex items-center gap-2">
-                    <Button variant="ghost" onClick={() => setEditing((e) => !e)}>{editing ? 'Cancelar' : 'Editar'}</Button>
-                    {editing && <Button onClick={handleSave} isLoading={updateLead.isPending}>Salvar</Button>}
-                    <Button variant="ghost" onClick={onClose}>Fechar</Button>
-                </div>
-            </div>
-
-            {editing ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <Input label="Nome" value={name} onChange={(e) => setName(e.target.value)} />
-                    <Input label="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
-                    <Input label="Telefone" value={phone} onChange={(e) => setPhone(e.target.value)} />
-                    <Input label="Empresa" value={company} onChange={(e) => setCompany(e.target.value)} />
-                    <Input label="Cargo" value={position} onChange={(e) => setPosition(e.target.value)} />
-                    <Input label="Origem" value={source} onChange={(e) => setSource(e.target.value)} />
-                    <Input label="Interesse" value={interest} onChange={(e) => setInterest(e.target.value)} />
-                    <Input label="Status" value={status} onChange={(e) => setStatus(e.target.value)} />
-                    <div>
-                        <label className="block text-sm font-medium text-neutral-900 mb-2">Temperatura</label>
-                        <select value={temperature} onChange={(e) => setTemperature(e.target.value as 'hot' | 'warm' | 'cold')} className="input">
-                            <option value="hot">hot</option>
-                            <option value="warm">warm</option>
-                            <option value="cold">cold</option>
-                        </select>
-                    </div>
-                </div>
-            ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                        <p className="text-sm text-text-tertiary">Empresa</p>
-                        <p className="text-sm text-neutral-900">{lead.company || '—'}</p>
-                    </div>
-                    <div>
-                        <p className="text-sm text-text-tertiary">Cargo</p>
-                        <p className="text-sm text-neutral-900">{lead.position || '—'}</p>
-                    </div>
-                    <div>
-                        <p className="text-sm text-text-tertiary">Temperatura</p>
-                        <p className="text-sm text-neutral-900 capitalize">{lead.temperature}</p>
-                    </div>
-                    <div>
-                        <p className="text-sm text-text-tertiary">Status</p>
-                        <p className="text-sm text-neutral-900">{lead.status}</p>
-                    </div>
-                    <div>
-                        <p className="text-sm text-text-tertiary">Origem</p>
-                        <p className="text-sm text-neutral-900">{lead.source || '—'}</p>
-                    </div>
-                    <div>
-                        <p className="text-sm text-text-tertiary">Interesse</p>
-                        <p className="text-sm text-neutral-900">{lead.interest || '—'}</p>
-                    </div>
-                </div>
-            )}
-
-            <div className="space-y-2">
-                <p className="text-sm text-text-tertiary">Responsável</p>
-                <p className="text-sm text-neutral-900">{lead.assignedTo?.name || '—'}</p>
-            </div>
-
-            <div className="space-y-3">
-                <h3 className="font-semibold text-neutral-900">Comentários</h3>
-                <div className="space-y-2 max-h-40 overflow-y-auto scrollbar-thin">
-                    {comments.length === 0 ? (
-                        <p className="text-sm text-text-secondary">Sem comentários</p>
-                    ) : (
-                        comments.map((c) => (
-                            <div key={c.id} className="text-sm">
-                                <p className="text-neutral-900">{c.content}</p>
-                                <p className="text-xs text-text-tertiary">{new Date(c.createdAt).toLocaleString('pt-BR')}</p>
-                            </div>
-                        ))
+                    <h2 className="text-2xl font-bold text-neutral-900">{lead.name}</h2>
+                    {(lead.company || lead.position) && (
+                        <p className="text-neutral-600 mt-1">
+                            {lead.company} {lead.position && `• ${lead.position}`}
+                        </p>
                     )}
                 </div>
-                <div className="flex items-end gap-2">
-                    <div className="flex-1">
-                        <Input placeholder="Adicionar comentário" value={content} onChange={(e) => setContent(e.target.value)} />
+                <button onClick={onClose} className="text-neutral-500 hover:text-neutral-800">
+                    <X className="h-6 w-6" />
+                </button>
+            </div>
+            <div className="flex items-center gap-4">
+                {getTemperatureBadge(lead.temperature)}
+                {getStatusBadge(lead.status)}
+                {(() => {
+                    const name = (lead.assignedTo?.name || '').trim();
+                    return name ? <span className="text-sm text-neutral-700">Delegado: {name}</span> : null;
+                })()}
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+                {lead.email && (
+                    <div>
+                        <p className="text-sm text-text-tertiary mb-1">Email</p>
+                        <p className="text-sm flex items-center gap-2">
+                            <Mail className="h-4 w-4" />
+                            {lead.email}
+                        </p>
                     </div>
-                    <Button onClick={handleAddComment} isLoading={addComment.isPending}>Adicionar</Button>
+                )}
+                {lead.phone && (
+                    <div>
+                        <p className="text-sm text-text-tertiary mb-1">Telefone</p>
+                        <p className="text-sm flex items-center gap-2">
+                            <Phone className="h-4 w-4" />
+                            {lead.phone}
+                        </p>
+                    </div>
+                )}
+                {lead.company && (
+                    <div>
+                        <p className="text-sm text-text-tertiary mb-1">Empresa</p>
+                        <p className="text-sm flex items-center gap-2">
+                            <Building className="h-4 w-4" />
+                            {lead.company}
+                        </p>
+                    </div>
+                )}
+                {lead.source && (
+                    <div>
+                        <p className="text-sm text-text-tertiary mb-1">Origem</p>
+                        <Badge variant="default">{lead.source}</Badge>
+                    </div>
+                )}
+            </div>
+            {lead.interest && (
+                <div>
+                    <p className="text-sm text-text-tertiary mb-2">Interesse</p>
+                    <p className="text-sm">{lead.interest}</p>
                 </div>
+            )}
+            {(() => {
+                const cf = (lead.customFields || {}) as Record<string, unknown>;
+                return (
+                    <div className="space-y-3">
+                        <div className="grid grid-cols-2 gap-4">
+                            {typeof cf.dealValue === 'number' && (
+                                <div>
+                                    <p className="text-sm text-text-tertiary mb-1">Valor da Venda</p>
+                                    <p className="text-sm">R$ {cf.dealValue as number}</p>
+                                </div>
+                            )}
+                            {typeof cf.outcomeReason === 'string' && (
+                                <div>
+                                    <p className="text-sm text-text-tertiary mb-1">Detalhes</p>
+                                    <p className="text-sm">{cf.outcomeReason as string}</p>
+                                </div>
+                            )}
+                        </div>
+                        <Comments leadId={lead.id} />
+                    </div>
+                );
+            })()}
+            <div className="flex flex-wrap gap-2 justify-end">
+                <OutcomeButton lead={lead} onClose={onClose} />
+                <EditLeadButton lead={lead} />
+                <DelegateLeadButton lead={lead} currentUserRole={String(user?.role || '').toLowerCase()} onDelegated={onClose} />
+                <Button variant="secondary" size="sm" onClick={onClose}>
+                    Fechar
+                </Button>
             </div>
         </div>
+    );
+}
+
+function Comments({ leadId }: { leadId: string }) {
+    const [content, setContent] = useState('');
+    const commentsQuery = useLeadComments(leadId);
+    const addComment = useAddLeadComment();
+    const comments = commentsQuery.data || [];
+    const handleAdd = async () => {
+        const text = content.trim();
+        if (!text) return;
+        try {
+            await addComment.mutateAsync({ id: leadId, content: text });
+            setContent('');
+        } catch {}
+    };
+    return (
+        <div className="space-y-3">
+            <p className="text-sm text-text-tertiary">Comentários</p>
+            <div className="space-y-2">
+                {comments.length === 0 ? (
+                    <p className="text-sm text-text-secondary">Sem comentários</p>
+                ) : (
+                    comments.map((c) => (
+                        <div key={c.id} className="p-2 rounded-md bg-neutral-100 border border-neutral-300">
+                            <p className="text-sm">{c.content}</p>
+                            <p className="text-xs text-text-tertiary mt-1">
+                                {formatDistanceToNow(new Date(c.createdAt), { addSuffix: true, locale: ptBR })}
+                            </p>
+                        </div>
+                    ))
+                )}
+            </div>
+            <div className="flex gap-2 items-end">
+                <Input label="Adicionar comentário" value={content} onChange={(e) => setContent(e.target.value)} className="bg-white border-neutral-300 text-neutral-900 focus:border-primary-500 focus:ring-primary-500/20" />
+                <Button size="sm" className="h-12 px-4 text-sm" onClick={handleAdd} isLoading={addComment.isPending}>Comentar</Button>
+            </div>
+        </div>
+    );
+}
+
+function OutcomeButton({ lead, onClose }: { lead: import('@/types/api').Lead; onClose: () => void }) {
+    const [open, setOpen] = useState(false);
+    const [status, setStatus] = useState<'Contrato fechado' | 'Em Qualificação'>('Contrato fechado');
+    const [value, setValue] = useState('');
+    const [reason, setReason] = useState('');
+    const updateLead = useUpdateLead();
+    const handleSave = async () => {
+        const customFields = {
+            ...(lead.customFields || {}),
+            dealValue: value ? Number(value) : undefined,
+            outcomeReason: reason || undefined,
+        };
+        try {
+            await updateLead.mutateAsync({ id: lead.id, data: { status, customFields } });
+            setOpen(false);
+            onClose();
+        } catch {}
+    };
+    return (
+        <>
+            <Button size="sm" variant="secondary" onClick={() => setOpen(true)}>
+                Definir Resultado
+            </Button>
+            {open && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[1000]" onClick={() => setOpen(false)}>
+                    <Card className="w-full max-w-md m-4 bg-white text-neutral-900 shadow-2xl border border-primary-500/20" onClick={(e) => e.stopPropagation()}>
+                        <div className="p-6 space-y-4">
+                            <h3 className="text-xl font-semibold text-neutral-900">Resultado do Lead</h3>
+                            <div className="grid grid-cols-2 gap-2">
+                                <Button size="sm" variant={status === 'Contrato fechado' ? 'primary' : 'secondary'} onClick={() => setStatus('Contrato fechado')}>Venda Fechada</Button>
+                                <Button size="sm" variant={status === 'Em Qualificação' ? 'primary' : 'secondary'} onClick={() => setStatus('Em Qualificação')}>Sem Interesse</Button>
+                            </div>
+                            <Input label="Valor da Venda (R$)" value={value} onChange={(e) => setValue(e.target.value)} className="bg-white border-neutral-300 text-neutral-900 focus:border-primary-500 focus:ring-primary-500/20" />
+                            <Input label="Detalhes" value={reason} onChange={(e) => setReason(e.target.value)} className="bg-white border-neutral-300 text-neutral-900 focus:border-primary-500 focus:ring-primary-500/20" />
+                            <div className="flex gap-2 pt-2">
+                                <Button size="sm" onClick={handleSave} isLoading={updateLead.isPending}>Salvar</Button>
+                                <Button size="sm" variant="secondary" onClick={() => setOpen(false)}>Cancelar</Button>
+                            </div>
+                        </div>
+                    </Card>
+                </div>
+            )}
+        </>
+    );
+}
+
+function EditLeadButton({ lead }: { lead: import('@/types/api').Lead }) {
+    const [open, setOpen] = useState(false);
+    const [name, setName] = useState(lead.name || '');
+    const [email, setEmail] = useState(lead.email || '');
+    const [phone, setPhone] = useState(lead.phone || '');
+    const [company, setCompany] = useState(lead.company || '');
+    const [position, setPosition] = useState(lead.position || '');
+    const [source, setSource] = useState(lead.source || '');
+    const [interest, setInterest] = useState(lead.interest || '');
+    const [temperature, setTemperature] = useState<"hot"|"warm"|"cold">(lead.temperature);
+    const [status, setStatus] = useState<'Lead Novo' | 'Em Qualificação' | 'Qualificado (QUENTE)' | 'Reuniões Agendadas' | 'Proposta enviada (Follow-up)' | 'No Show (Não compareceu) (Follow-up)' | 'Contrato fechado'>(lead.status);
+    const updateLead = useUpdateLead();
+    const handleSave = async () => {
+        try {
+            await updateLead.mutateAsync({
+                id: lead.id,
+                data: {
+                    name,
+                    email: email || undefined,
+                    phone: phone || undefined,
+                    company: company || undefined,
+                    position: position || undefined,
+                    source: source || undefined,
+                    interest: interest || undefined,
+                    temperature,
+                    status,
+                },
+            });
+            setOpen(false);
+        } catch {}
+    };
+    return (
+        <>
+            <Button size="sm" variant="secondary" onClick={() => setOpen(true)}>Editar</Button>
+            {open && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[1000]" onClick={() => setOpen(false)}>
+                    <Card className="w-full max-w-2xl max-h-[80vh] overflow-y-auto m-4 bg-white text-neutral-900 shadow-2xl border border-primary-500/20" onClick={(e) => e.stopPropagation()}>
+                        <div className="p-6 space-y-4">
+                            <h3 className="text-xl font-semibold text-neutral-900">Editar Lead</h3>
+                            <Input label="Nome" value={name} onChange={(e) => setName(e.target.value)} className="bg-white border-neutral-300 text-neutral-900 focus:border-primary-500 focus:ring-primary-500/20" />
+                            <div className="grid grid-cols-2 gap-4">
+                                <Input label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="bg-white border-neutral-300 text-neutral-900 focus:border-primary-500 focus:ring-primary-500/20" />
+                                <Input label="Telefone" value={phone} onChange={(e) => setPhone(e.target.value)} className="bg-white border-neutral-300 text-neutral-900 focus:border-primary-500 focus:ring-primary-500/20" />
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <Input label="Empresa" value={company} onChange={(e) => setCompany(e.target.value)} className="bg-white border-neutral-300 text-neutral-900 focus:border-primary-500 focus:ring-primary-500/20" />
+                                <Input label="Cargo" value={position} onChange={(e) => setPosition(e.target.value)} className="bg-white border-neutral-300 text-neutral-900 focus:border-primary-500 focus:ring-primary-500/20" />
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <Input label="Origem" value={source} onChange={(e) => setSource(e.target.value)} className="bg-white border-neutral-300 text-neutral-900 focus:border-primary-500 focus:ring-primary-500/20" />
+                                <Input label="Interesse" value={interest} onChange={(e) => setInterest(e.target.value)} className="bg-white border-neutral-300 text-neutral-900 focus:border-primary-500 focus:ring-primary-500/20" />
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <p className="text-sm text-text-tertiary mb-1">Temperatura</p>
+                                    <select
+                                        className="w-full border border-neutral-300 rounded-md p-2 text-sm"
+                                        value={temperature}
+                                        onChange={(e) => setTemperature(e.target.value as 'hot' | 'warm' | 'cold')}
+                                    >
+                                        <option value="hot">Quente</option>
+                                        <option value="warm">Morno</option>
+                                        <option value="cold">Frio</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <p className="text-sm text-text-tertiary mb-1">Status</p>
+                                    {(() => {
+                                        const STAGES: Array<'Lead Novo' | 'Em Qualificação' | 'Qualificado (QUENTE)' | 'Reuniões Agendadas' | 'Proposta enviada (Follow-up)' | 'No Show (Não compareceu) (Follow-up)' | 'Contrato fechado'> = [
+                                            'Lead Novo',
+                                            'Em Qualificação',
+                                            'Qualificado (QUENTE)',
+                                            'Reuniões Agendadas',
+                                            'Proposta enviada (Follow-up)',
+                                            'No Show (Não compareceu) (Follow-up)',
+                                            'Contrato fechado',
+                                        ];
+                                        return (
+                                            <select
+                                                className="w-full border border-neutral-300 rounded-md p-2 text-sm"
+                                                value={status}
+                                                onChange={(e) => setStatus(e.target.value as typeof STAGES[number])}
+                                            >
+                                                {STAGES.map((s) => (
+                                                    <option key={s} value={s}>{s}</option>
+                                                ))}
+                                            </select>
+                                        );
+                                    })()}
+                                </div>
+                            </div>
+                            <div className="flex gap-2 pt-2">
+                                <Button size="sm" onClick={handleSave} isLoading={updateLead.isPending}>Salvar</Button>
+                                <Button size="sm" variant="secondary" onClick={() => setOpen(false)}>Cancelar</Button>
+                            </div>
+                        </div>
+                    </Card>
+                </div>
+            )}
+        </>
+    );
+}
+
+function DelegateLeadButton({ lead, currentUserRole, onDelegated }: { lead: import('@/types/api').Lead; currentUserRole: string; onDelegated: () => void }) {
+    const canDelegate = ['admin', 'manager', 'sdr'].includes(currentUserRole);
+    const [open, setOpen] = useState(false);
+    const [loadingUsers, setLoadingUsers] = useState(false);
+    const [users, setUsers] = useState<Array<{ id: string; name: string; email: string; role: string; isActive: boolean }>>([]);
+    const [query, setQuery] = useState('');
+    const [suggestions, setSuggestions] = useState<Array<{ id: string; name: string; email: string }>>([]);
+    const [selectedUserId, setSelectedUserId] = useState<string>('');
+    const [searching, setSearching] = useState(false);
+    const delegateLead = useDelegateLead();
+    const queryClient = useQueryClient();
+
+    const handleOpen = async () => {
+        if (!canDelegate) return;
+        setOpen(true);
+        try {
+            setLoadingUsers(true);
+            const list = await api.getConsultants();
+            setUsers(list);
+            setSuggestions(list.map((u) => ({ id: u.id, name: u.name, email: u.email })));
+            setSelectedUserId('');
+            setQuery('');
+        } finally {
+            setLoadingUsers(false);
+        }
+    };
+
+    const handleSearch = async (text: string) => {
+        setQuery(text);
+        if (!text.trim()) {
+            setSuggestions(users.map((u) => ({ id: u.id, name: u.name, email: u.email })));
+            return;
+        }
+        try {
+            setSearching(true);
+            const list = await api.searchUsers(text);
+            const uniq = new Map(list.map((u) => [u.id, u]));
+            setSuggestions(Array.from(uniq.values()).map((u) => ({ id: u.id, name: u.name, email: u.email })));
+        } finally {
+            setSearching(false);
+        }
+    };
+
+    const handleDelegate = async () => {
+        let targetId = selectedUserId;
+        if (!targetId) {
+            const exact = suggestions.find((u) => u.email.toLowerCase() === query.toLowerCase() || u.name.toLowerCase() === query.toLowerCase());
+            if (exact) targetId = exact.id;
+        }
+        if (!targetId) {
+            toast.error('Selecione um usuário');
+            return;
+        }
+        try {
+            await delegateLead.mutateAsync({ id: lead.id, assignedToId: targetId });
+            queryClient.invalidateQueries({ queryKey: ['conversations'] });
+            setOpen(false);
+            onDelegated();
+        } catch (error: unknown) {
+            const e = error as { response?: { data?: { message?: string } }; message?: string };
+            toast.error(e.response?.data?.message || e.message || 'Erro ao delegar lead');
+        }
+    };
+
+    return (
+        <>
+            <Button size="sm" variant="secondary" className="w-full" onClick={handleOpen} disabled={!canDelegate}>Delegar</Button>
+            {open && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[1000]" onClick={() => setOpen(false)}>
+                    <Card className="w-full max-w-lg max-h-[80vh] overflow-y-auto scrollbar-thin m-4 bg-white text-neutral-900 shadow-2xl border border-primary-500/20" onClick={(e) => e.stopPropagation()}>
+                        <div className="p-6 space-y-4">
+                            <h3 className="text-xl font-semibold text-neutral-900">Delegar Lead</h3>
+                            {loadingUsers ? (
+                                <p className="text-sm text-text-secondary">Carregando usuários...</p>
+                            ) : users.length === 0 ? (
+                                <p className="text-sm text-text-secondary">Sem usuários disponíveis</p>
+                            ) : (
+                                <div className="space-y-2">
+                                    <Input
+                                        label="Usuário"
+                                        placeholder="Digite nome ou email"
+                                        value={query}
+                                        onChange={(e) => handleSearch(e.target.value)}
+                                    />
+                                    <div className="border border-neutral-300 rounded-md max-h-48 overflow-auto">
+                                        {searching ? (
+                                            <div className="p-3 text-sm text-text-secondary">Carregando...</div>
+                                        ) : suggestions.length === 0 ? (
+                                            <div className="p-3 text-sm text-text-secondary">Nenhum usuário encontrado</div>
+                                        ) : (
+                                            <ul>
+                                                {suggestions.map((u) => (
+                                                    <li
+                                                        key={u.id}
+                                                        className={`px-3 py-2 text-sm cursor-pointer ${selectedUserId === u.id ? 'bg-neutral-100' : ''}`}
+                                                        onClick={() => setSelectedUserId(u.id)}
+                                                    >
+                                                        {u.name} ({u.email})
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+                            <div className="flex gap-2 pt-2">
+                                <Button size="sm" className="h-12 px-5 text-sm" onClick={handleDelegate} isLoading={delegateLead.isPending}>Delegar</Button>
+                                <Button size="sm" variant="secondary" className="h-12 px-5 text-sm" onClick={() => setOpen(false)}>Cancelar</Button>
+                            </div>
+                        </div>
+                    </Card>
+                </div>
+            )}
+        </>
     );
 }
