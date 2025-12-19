@@ -1,8 +1,10 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateMessageDto } from './dto/create-message.dto';
 import { Message } from '@prisma/client';
+import * as fs from 'fs';
+import * as path from 'path';
 
 import { ConversationsGateway } from '../conversations/conversations.gateway';
 
@@ -12,6 +14,8 @@ import { UazapiService } from '../integrations/uazapi.service';
 
 @Injectable()
 export class MessagesService {
+  private readonly logger = new Logger(MessagesService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly gateway: ConversationsGateway,
@@ -20,6 +24,198 @@ export class MessagesService {
     private readonly uazapiService: UazapiService,
     private readonly configService: ConfigService,
   ) {}
+
+  async syncMessages(conversationId: string): Promise<number> {
+    try {
+        const conversation = await this.prisma.conversation.findUnique({
+            where: { id: conversationId },
+            include: { channel: true },
+        });
+
+        if (!conversation || conversation.channel.type !== 'whatsapp') {
+            return 0;
+        }
+
+        const channelConfig = conversation.channel.config as any;
+        const token = channelConfig?.token || this.configService.get<string>('UAZAPI_INSTANCE_TOKEN');
+        if (!token) {
+            this.logger.error('No Uazapi token found for sync');
+            return 0;
+        }
+
+        const contactPhone = conversation.contactIdentifier.replace(/\D/g, '');
+        const chatId = `${contactPhone}@s.whatsapp.net`;
+
+        this.logger.log(`Syncing messages for chat ${chatId} using token ${token.slice(0, 10)}...`);
+
+        const uazapiMessages = await this.uazapiService.findMessages(chatId, 50, 0, token);
+
+        if (!uazapiMessages || !Array.isArray(uazapiMessages)) {
+            this.logger.log(`No messages found for chat ${chatId}`);
+            return 0;
+        }
+
+        this.logger.log(`Found ${uazapiMessages.length} messages from Uazapi`);
+        
+        let importedCount = 0;
+
+        // Process messages from oldest to newest if they are returned new-to-old
+        // Usually APIs return newest first. Let's reverse to insert in order.
+        // But findMessages order depends on API. Let's assume newest first and reverse.
+        const messagesToProcess = [...uazapiMessages].reverse();
+
+        for (const msg of messagesToProcess) {
+            // Filter out group messages
+            const remoteJid = msg.key?.remoteJid || '';
+            if (remoteJid.endsWith('@g.us')) {
+                continue;
+            }
+
+            // Determine sender
+            const isFromMe = msg.key?.fromMe === true;
+            const senderType = isFromMe ? 'user' : 'contact'; // 'user' represents the system/agent
+
+            // Extract content
+            let content = '';
+            if (msg.message?.conversation) content = msg.message.conversation;
+            else if (msg.message?.extendedTextMessage?.text) content = msg.message.extendedTextMessage.text;
+            else if (msg.message?.imageMessage?.caption) content = msg.message.imageMessage.caption;
+            else if (msg.message?.videoMessage?.caption) content = msg.message.videoMessage.caption;
+            else if (msg.message?.documentMessage?.caption) content = msg.message.documentMessage.caption;
+            
+            if (!content) {
+                if (msg.message?.imageMessage) content = '[Imagem]';
+                else if (msg.message?.videoMessage) content = '[Vídeo]';
+                else if (msg.message?.audioMessage) content = '[Áudio]';
+                else if (msg.message?.documentMessage) content = '[Documento]';
+                else if (msg.message?.stickerMessage) content = '[Sticker]';
+            }
+
+            if (!content && !msg.message) continue;
+
+            // Timestamp
+            const messageTimestamp = msg.messageTimestamp ? new Date(Number(msg.messageTimestamp) * 1000) : new Date();
+
+            // Check for duplicates
+            // We use a fuzzy check on content and approximate timestamp (within 1 second)
+            // Or strictly check if we have stored providerMessageId
+            const providerId = msg.key?.id;
+            
+            // Check by providerId in metadata if possible, but we haven't been saving it consistently.
+            // Check by content and time range.
+            const existing = await this.prisma.message.findFirst({
+                where: {
+                    conversationId: conversation.id,
+                    content: content,
+                    createdAt: {
+                        gte: new Date(messageTimestamp.getTime() - 2000),
+                        lte: new Date(messageTimestamp.getTime() + 2000)
+                    },
+                    senderType: senderType
+                }
+            });
+
+            if (existing) {
+                // Check if we need to backfill media for existing messages
+                if ((existing.type === 'image' || existing.type === 'video' || existing.type === 'audio' || existing.type === 'file') && 
+                    (!existing.attachments || Object.keys(existing.attachments as object).length === 0)) {
+                    
+                    let attachments: any = undefined;
+                    if (msg.message?.imageMessage) attachments = await this.processSyncedMedia(msg, 'image', token);
+                    else if (msg.message?.videoMessage) attachments = await this.processSyncedMedia(msg, 'video', token);
+                    else if (msg.message?.audioMessage) attachments = await this.processSyncedMedia(msg, 'audio', token);
+                    else if (msg.message?.documentMessage) attachments = await this.processSyncedMedia(msg, 'document', token);
+
+                    if (attachments) {
+                         this.logger.log(`Backfilled media for message ${existing.id}`);
+                         await this.prisma.message.update({
+                             where: { id: existing.id },
+                             data: { attachments }
+                         });
+                         importedCount++; 
+                    }
+                }
+                continue;
+            }
+
+            // Handle Media
+            let attachments: any = undefined;
+            let type = 'text';
+            
+            if (msg.message?.imageMessage) {
+                type = 'image';
+                attachments = await this.processSyncedMedia(msg, 'image', token);
+            } else if (msg.message?.videoMessage) {
+                type = 'video';
+                attachments = await this.processSyncedMedia(msg, 'video', token);
+            } else if (msg.message?.audioMessage) {
+                type = 'audio';
+                attachments = await this.processSyncedMedia(msg, 'audio', token);
+            } else if (msg.message?.documentMessage) {
+                type = 'file';
+                attachments = await this.processSyncedMedia(msg, 'document', token);
+            }
+
+            await this.create({
+                conversationId: conversation.id,
+                content: content,
+                senderType: senderType,
+                type: type,
+                attachments,
+                skipAI: true,
+                metadata: {
+                    providerMessageId: providerId,
+                    synced: true
+                }
+            });
+            importedCount++;
+        }
+
+        return importedCount;
+    } catch (error) {
+        this.logger.error(`Error syncing messages: ${(error as Error).message}`);
+        return 0;
+    }
+  }
+
+  private async processSyncedMedia(msg: any, type: string, token: string): Promise<any> {
+      try {
+        const messageId = msg.key?.id;
+        if (!messageId) return undefined;
+
+        // Try to download media
+        // Note: findMessages might not return base64 or url directly.
+        // We might need to call downloadMedia.
+        
+        // Check if url is present and valid?
+        // Usually url in message object is internal WhatsApp URL, not accessible.
+        // So we must download.
+        
+        const downloaded = await this.uazapiService.downloadMedia(messageId, token);
+        if (!downloaded) return undefined;
+
+        const ext = downloaded.mimetype ? downloaded.mimetype.split('/')[1].replace('; codecs=opus', '') : 'bin';
+        const filename = downloaded.filename || `${Date.now()}-${Math.round(Math.random() * 10000)}.${ext}`;
+        const uploadDir = path.join(process.cwd(), 'uploads');
+        if (!fs.existsSync(uploadDir)) {
+            fs.mkdirSync(uploadDir, { recursive: true });
+        }
+        const filepath = path.join(uploadDir, filename);
+        
+        fs.writeFileSync(filepath, downloaded.buffer);
+        
+        return {
+            url: `/uploads/${filename}`,
+            path: `/uploads/${filename}`,
+            mimetype: downloaded.mimetype,
+            filename: filename,
+            source: 'uazapi-sync'
+        };
+      } catch (e) {
+          this.logger.error(`Failed to process synced media: ${e}`);
+          return undefined;
+      }
+  }
 
   async create(dto: CreateMessageDto): Promise<Message> {
     const message = await this.prisma.message.create({
@@ -94,8 +290,10 @@ export class MessagesService {
         }
       }
 
-      this.handleAIResponse(dto.conversationId, dto.content);
-      await this.qualifyLeadForConversation(dto.conversationId, dto.content);
+      if (!dto.skipAI) {
+        this.handleAIResponse(dto.conversationId, dto.content);
+        await this.qualifyLeadForConversation(dto.conversationId, dto.content);
+      }
     }
 
     if (dto.senderType === 'user') {
@@ -345,6 +543,15 @@ export class MessagesService {
 
   async findOne(id: string): Promise<Message | null> {
     return this.prisma.message.findUnique({ where: { id } });
+  }
+
+  async update(id: string, data: any): Promise<Message> {
+    const updated = await this.prisma.message.update({
+      where: { id },
+      data,
+    });
+    this.gateway.emitMessageUpdated(updated.conversationId, updated);
+    return updated;
   }
 
   async remove(id: string): Promise<Message> {

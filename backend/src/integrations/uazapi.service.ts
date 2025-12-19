@@ -169,6 +169,105 @@ export class UazapiService {
    * Parse incoming Uazapi webhook payload
    * This structure is a placeholder and needs to be updated based on actual Uazapi webhook documentation.
    */
+  async downloadMedia(
+    messageId: string,
+    token: string,
+    openaiApiKey?: string
+  ): Promise<{ buffer: Buffer; mimetype: string; filename?: string } | null> {
+    if (!token) {
+        this.logger.error('Download media failed: No token provided');
+        return null;
+    }
+
+    try {
+        this.logger.log(`Attempting to download media for message ${messageId}`);
+        const url = `${this.apiUrl}/message/download`;
+        const payload = {
+            id: messageId,
+            return_base64: true, // Request base64 directly
+            generate_mp3: false,
+            return_link: false,
+            transcribe: false,
+            openai_apikey: openaiApiKey || '',
+            download_quoted: false
+        };
+
+        const response = await axios.post(url, payload, {
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'token': token,
+            }
+        });
+
+        this.logger.log(`Download media response status: ${response.status}`);
+
+        if (response.data && response.data.base64) {
+            this.logger.log(`Download media success. Base64 length: ${response.data.base64.length}`);
+            // Check if base64 has prefix
+            const base64Str = response.data.base64;
+            const matches = base64Str.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+            
+            let buffer: Buffer;
+            let mimetype = response.data.mimetype || 'application/octet-stream';
+            
+            if (matches && matches.length === 3) {
+                mimetype = matches[1];
+                buffer = Buffer.from(matches[2], 'base64');
+            } else {
+                buffer = Buffer.from(base64Str, 'base64');
+            }
+            
+            return {
+                buffer,
+                mimetype,
+                filename: response.data.filename
+            };
+        }
+
+        return null;
+    } catch (error) {
+        this.logger.error(`Error downloading media from Uazapi: ${(error as Error).message}`);
+        return null;
+    }
+  }
+
+  async findMessages(
+    chatId: string,
+    limit: number = 20,
+    offset: number = 0,
+    token: string
+  ): Promise<any[]> {
+    try {
+        const url = `${this.apiUrl}/message/find`;
+        const payload = {
+            chatid: chatId,
+            limit,
+            offset
+        };
+
+        const response = await axios.post(url, payload, {
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'token': token,
+            }
+        });
+
+        if (response.data && Array.isArray(response.data)) {
+            return response.data;
+        } else if (response.data && response.data.data && Array.isArray(response.data.data)) {
+            // Some APIs return { data: [...] }
+            return response.data.data;
+        }
+
+        return [];
+    } catch (error) {
+        this.logger.error(`Error finding messages from Uazapi: ${(error as Error).message}`);
+        return [];
+    }
+  }
+
   parseIncomingMessage(payload: any): {
     from: string;
     message: string;
@@ -177,6 +276,7 @@ export class UazapiService {
     type: string;
     instanceId?: string;
     contactName?: string;
+    isGroup?: boolean;
     media?: {
       type: 'image' | 'video' | 'audio' | 'document' | 'sticker';
       url?: string;
@@ -195,7 +295,7 @@ export class UazapiService {
       const eventType = payload.event || payload.EventType;
       
       // Handle "messages.upsert" event structure (Baileys/Uazapi common)
-      if (eventType === 'messages.upsert' && payload.data) {
+      if ((eventType === 'messages.upsert' || eventType === 'messages_upsert') && payload.data) {
         messageData = typeof payload.data === 'string' ? JSON.parse(payload.data) : payload.data;
       } else if ((eventType === 'messages' || eventType === 'MESSAGE') && payload.message) {
          // Uazapi "messages" event structure
@@ -220,6 +320,44 @@ export class UazapiService {
       if (messageData.status && !messageData.message && !messageData.content && !messageData.text) {
           this.logger.log('Ignoring status update event');
           return null;
+      }
+
+      // Handle FileDownloaded event (Uazapi Async Media)
+      if (payload.type === 'FileDownloadedMessage' && payload.event) {
+          const evt = payload.event;
+          const from = evt.Chat ? evt.Chat.replace(/@.+/, '') : '';
+          const messageId = evt.MessageIDs ? evt.MessageIDs[0] : '';
+          const mimetype = evt.MimeType || '';
+          const fileUrl = evt.FileURL;
+          const timestamp = evt.Timestamp || new Date().toISOString();
+          const instanceId = payload.owner || payload.instanceName;
+
+          let type = 'file';
+          if (mimetype.startsWith('image')) type = 'image';
+          else if (mimetype.startsWith('audio')) type = 'audio';
+          else if (mimetype.startsWith('video')) type = 'video';
+
+          return {
+              from,
+              message: `[${type.charAt(0).toUpperCase() + type.slice(1)}]`,
+              messageId,
+              timestamp,
+              type,
+              instanceId,
+              media: {
+                  type: type as any,
+                  url: fileUrl,
+                  mimetype: mimetype,
+                  fileName: path.basename(fileUrl)
+              }
+          };
+      }
+
+      // Detect if it is a group message
+      let isGroup = false;
+      const remoteJid = messageData.key?.remoteJid || messageData.from || messageData.chat || '';
+      if (typeof remoteJid === 'string' && remoteJid.endsWith('@g.us')) {
+          isGroup = true;
       }
 
       // Extract 'from'
@@ -275,16 +413,43 @@ export class UazapiService {
       const timestamp = messageData.messageTimestamp ? new Date(Number(messageData.messageTimestamp)).toISOString() : (messageData.timestamp || new Date().toISOString());
       
       let type = messageData.type || messageData.messageType || 'text';
+      
+      // Fix: specific handling for generic 'media' type when specific messageType is available
+      if (type === 'media' && messageData.messageType) {
+          type = messageData.messageType;
+      }
+
       if (type === 'ExtendedTextMessage') type = 'text';
+      if (type === 'ImageMessage') type = 'image';
+      if (type === 'VideoMessage') type = 'video';
+      if (type === 'AudioMessage') type = 'audio';
+      if (type === 'DocumentMessage' || type === 'documentMessage' || type === 'documentWithCaptionMessage') type = 'document'; // or 'file'
+      if (type === 'StickerMessage') type = 'sticker';
+      if (type === 'conversation') type = 'text';
 
       const instanceId = payload.instanceId || payload.instance_id || payload.owner;
       const contactName = messageData.pushName || messageData.senderName || messageData.contact?.name || messageData.notifyName || payload.chat?.contactName;
 
       // Extract media details
       let media: any = undefined;
+      
+      // Helper to check if content is media-like
+      const isMediaContent = (content: any) => content && typeof content === 'object' && (content.url || content.URL || content.mimetype);
+
       if (messageData.message) {
-        const msg = messageData.message;
+        let msg = messageData.message;
+        
+        // Unwrap common Baileys message wrappers
+        if (msg.ephemeralMessage?.message) {
+            msg = msg.ephemeralMessage.message;
+        } else if (msg.viewOnceMessage?.message) {
+            msg = msg.viewOnceMessage.message;
+        } else if (msg.documentWithCaptionMessage?.message) {
+            msg = msg.documentWithCaptionMessage.message;
+        }
+
         if (msg.imageMessage) {
+            type = 'image'; // Enforce type
             media = {
                 type: 'image',
                 url: msg.imageMessage.url,
@@ -294,6 +459,7 @@ export class UazapiService {
                 mediaKey: msg.imageMessage.mediaKey
             };
         } else if (msg.videoMessage) {
+             type = 'video';
              media = {
                 type: 'video',
                 url: msg.videoMessage.url,
@@ -303,6 +469,7 @@ export class UazapiService {
                 mediaKey: msg.videoMessage.mediaKey
             };
         } else if (msg.audioMessage) {
+             type = 'audio';
              media = {
                 type: 'audio',
                 url: msg.audioMessage.url,
@@ -311,22 +478,153 @@ export class UazapiService {
                 mediaKey: msg.audioMessage.mediaKey
             };
         } else if (msg.documentMessage) {
+             type = 'document';
              media = {
                 type: 'document',
                 url: msg.documentMessage.url,
                 mimetype: msg.documentMessage.mimetype,
                 caption: msg.documentMessage.caption,
-                fileName: msg.documentMessage.fileName || msg.documentMessage.title,
+                fileName: msg.documentMessage.fileName || msg.documentMessage.title || 'document',
                 base64: msg.documentMessage.base64,
                 mediaKey: msg.documentMessage.mediaKey
             };
+        } else if (msg.documentWithCaptionMessage && msg.documentWithCaptionMessage.message && msg.documentWithCaptionMessage.message.documentMessage) {
+            // Fallback explicit check for documentWithCaptionMessage
+             const docMsg = msg.documentWithCaptionMessage.message.documentMessage;
+             type = 'document';
+             media = {
+                type: 'document',
+                url: docMsg.url,
+                mimetype: docMsg.mimetype,
+                caption: docMsg.caption,
+                fileName: docMsg.fileName || docMsg.title || 'document',
+                base64: docMsg.base64,
+                mediaKey: docMsg.mediaKey
+            };
         }
+      } else if (messageData.content && isMediaContent(messageData.content)) {
+          // Handle Uazapi flat structure where content is the media object
+          const content = messageData.content;
+          if (type === 'image') {
+               media = {
+                  type: 'image',
+                  url: content.URL || content.url,
+                  mimetype: content.mimetype,
+                  caption: content.caption || messageData.caption,
+                  base64: content.base64,
+                  mediaKey: content.mediaKey,
+                  fileName: content.fileName
+               };
+          } else if (type === 'video') {
+               media = {
+                  type: 'video',
+                  url: content.URL || content.url,
+                  mimetype: content.mimetype,
+                  caption: content.caption || messageData.caption,
+                  base64: content.base64,
+                  mediaKey: content.mediaKey
+               };
+          } else if (type === 'audio') {
+               media = {
+                  type: 'audio',
+                  url: content.URL || content.url,
+                  mimetype: content.mimetype,
+                  base64: content.base64,
+                  mediaKey: content.mediaKey
+               };
+          } else if (type === 'document' || type === 'file') {
+               type = 'document'; // normalize
+               media = {
+                  type: 'document',
+                  url: content.URL || content.url,
+                  mimetype: content.mimetype,
+                  caption: content.caption || messageData.caption,
+                  fileName: content.fileName || content.title,
+                  base64: content.base64,
+                  mediaKey: content.mediaKey
+               };
+          }
+      }
+
+      // Re-evaluate textBody if it looks like JSON or if we found media
+      if (media) {
+          if (!textBody || textBody.startsWith('{')) {
+              textBody = media.caption || `[${type.charAt(0).toUpperCase() + type.slice(1)}]`;
+          }
+      } else {
+          // If no media, but textBody is JSON, try to clean it
+           if (textBody && textBody.startsWith('{') && messageData.content && typeof messageData.content === 'object') {
+               // It was likely stringified content. If it's not media, what is it?
+               // Check if it has mimetype
+               if (messageData.content.mimetype) {
+                   // It IS media, but type might have been wrong or missed
+                   const content = messageData.content;
+                   const mime = content.mimetype;
+                   if (mime.startsWith('image/')) type = 'image';
+                   else if (mime.startsWith('video/')) type = 'video';
+                   else if (mime.startsWith('audio/')) type = 'audio';
+                   else type = 'document';
+                   
+                   media = {
+                      type: type as any,
+                      url: content.URL || content.url,
+                      mimetype: mime,
+                      caption: content.caption,
+                      fileName: content.fileName || content.title,
+                      base64: content.base64,
+                      mediaKey: content.mediaKey
+                   };
+                   textBody = media.caption || `[${type.charAt(0).toUpperCase() + type.slice(1)}]`;
+               }
+           }
+      }
+
+      // If we still don't have textBody, but we have media, ensure we have a placeholder
+      if (!textBody && media) {
+           textBody = `[${type.charAt(0).toUpperCase() + type.slice(1)}]`;
+      }
+
+      // Final fallback for "Missing required fields" - if we have an ID and it looks like a message, 
+      // but textBody is missing, maybe it's a media message that we failed to parse as media?
+      if (from && !textBody) {
+          if (type === 'image' || type === 'video' || type === 'audio' || type === 'document' || type === 'sticker') {
+              textBody = `[${type.charAt(0).toUpperCase() + type.slice(1)}]`;
+              // If media is still undefined, try to populate it from messageData directly if possible
+              if (!media) {
+                  media = {
+                      type: type as any,
+                      url: messageData.url || messageData.URL,
+                      mimetype: messageData.mimetype,
+                      base64: messageData.base64,
+                      mediaKey: messageData.mediaKey
+                  };
+              }
+          } else if (messageData.mimetype) {
+               // It has mimetype but we missed it?
+               const mime = messageData.mimetype;
+               if (mime.startsWith('image')) { type = 'image'; textBody = '[Imagem]'; }
+               else if (mime.startsWith('video')) { type = 'video'; textBody = '[Vídeo]'; }
+               else if (mime.startsWith('audio')) { type = 'audio'; textBody = '[Áudio]'; }
+               else { type = 'document'; textBody = '[Arquivo]'; }
+               
+               if (!media) {
+                   media = {
+                       type: type as any,
+                       url: messageData.url || messageData.URL,
+                       mimetype: messageData.mimetype,
+                       base64: messageData.base64,
+                       mediaKey: messageData.mediaKey,
+                       fileName: messageData.fileName || messageData.filename
+                   };
+               }
+          }
       }
 
       this.logger.log(`Extracted data - From: ${from}, Msg: ${textBody}, Type: ${type}, Inst: ${instanceId}`);
 
       if (!from || !textBody) {
-        this.logger.warn('Missing required fields (from or message)');
+        this.logger.warn(`Missing required fields (from or message). From: '${from}', TextBody: '${textBody}'`);
+        this.logger.warn(`Dump messageData: ${JSON.stringify(messageData, null, 2)}`);
         return null;
       }
 
@@ -337,7 +635,8 @@ export class UazapiService {
         timestamp,
         type,
         instanceId, 
-        contactName, 
+        contactName,
+        isGroup,
         media,
       };
     } catch (error) {

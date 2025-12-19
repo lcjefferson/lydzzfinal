@@ -39,6 +39,18 @@ services:
           envVarKey: RENDER_EXTERNAL_URL
       - key: WHATSAPP_VERIFY_TOKEN
         sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: WHATSAPP_API_URL
+        value: https://graph.facebook.com/v18.0
+      - key: WHATSAPP_ACCESS_TOKEN
+        sync: false
+      - key: WHATSAPP_PHONE_NUMBER_ID
+        sync: false
+      - key: REDIS_HOST
+        value: redis
+      - key: REDIS_PORT
+        value: 6379
 
   - type: web
     name: frontend
@@ -54,6 +66,11 @@ services:
           type: web
           name: backend
           envVarKey: RENDER_EXTERNAL_URL
+
+  - type: pserv
+    name: redis
+    runtime: image
+    image: redis:7-alpine
 
 databases:
   - name: lydzzfinal-db

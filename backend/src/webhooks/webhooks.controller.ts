@@ -13,6 +13,7 @@ import {
 } from '@nestjs/common';
 import * as fs from 'fs';
 import * as path from 'path';
+import axios from 'axios';
 import { WebhooksService } from './webhooks.service';
 import { CreateWebhookDto } from './dto/create-webhook.dto';
 import { UpdateWebhookDto } from './dto/update-webhook.dto';
@@ -275,12 +276,14 @@ export class WebhooksController {
       }
 
       const msgTypeRaw = incomingMessage.type || 'text';
-      const mappedType: 'text' | 'image' | 'file' | 'audio' =
+      const mappedType: 'text' | 'image' | 'file' | 'audio' | 'video' =
         msgTypeRaw === 'image'
           ? 'image'
           : msgTypeRaw === 'audio'
             ? 'audio'
-            : msgTypeRaw === 'video' || msgTypeRaw === 'document'
+          : msgTypeRaw === 'video'
+            ? 'video'
+            : msgTypeRaw === 'document'
               ? 'file'
               : 'text';
 
@@ -346,6 +349,12 @@ export class WebhooksController {
         this.logger.warn('Incoming Uazapi webhook ignored: no message found in parseIncomingMessage');
         return { status: 'ignored' };
       }
+      
+      if (incomingMessage.isGroup) {
+          this.logger.log(`Ignoring group message from ${incomingMessage.from}`);
+          return { status: 'ignored_group' };
+      }
+
       this.logger.log(`Parsed message: ${JSON.stringify(incomingMessage, null, 2)}`);
 
       const channels = await this.prisma.channel.findMany({
@@ -449,13 +458,17 @@ export class WebhooksController {
         });
       }
 
-      const msgTypeRaw = incomingMessage.type || 'text';
-      const mappedType: 'text' | 'image' | 'file' | 'audio' =
+      this.logger.log(`Processing Uazapi message from ${incomingMessage.from}, type: ${incomingMessage.type}`);
+
+      const msgTypeRaw = (incomingMessage.type || 'text').toLowerCase();
+      let mappedType: 'text' | 'image' | 'file' | 'audio' | 'video' =
         msgTypeRaw === 'image'
           ? 'image'
           : msgTypeRaw === 'audio'
             ? 'audio'
-            : msgTypeRaw === 'video' || msgTypeRaw === 'document'
+          : msgTypeRaw === 'video'
+            ? 'video'
+            : (msgTypeRaw === 'document' || msgTypeRaw === 'file')
               ? 'file'
               : 'text';
 
@@ -464,44 +477,141 @@ export class WebhooksController {
       // Handle media from Uazapi
       if (incomingMessage.media) {
          try {
+             let buffer: Buffer | undefined;
+             let mimetype = incomingMessage.media.mimetype;
+             let filename = incomingMessage.media.fileName;
+
+             // If we have base64, use it
              if (incomingMessage.media.base64) {
-                 // Save base64 to file
                  const matches = incomingMessage.media.base64.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
-                 let buffer: Buffer;
                  if (matches && matches.length === 3) {
                      buffer = Buffer.from(matches[2], 'base64');
                  } else {
                      buffer = Buffer.from(incomingMessage.media.base64, 'base64');
                  }
+             } 
+             // If we have no base64 but have mediaKey/messageId, try to download
+             else if (incomingMessage.messageId) {
+                 const cfg = (channel?.config && typeof channel.config === 'object' ? channel.config : {}) as { token?: string };
+                 const token = cfg.token || process.env.UAZAPI_INSTANCE_TOKEN;
                  
-                 const ext = incomingMessage.media.mimetype ? incomingMessage.media.mimetype.split('/')[1].replace('; codecs=opus', '') : 'bin';
-                 const filename = `${Date.now()}-${Math.round(Math.random() * 10000)}.${ext}`;
+                 this.logger.log(`Processing media for message ${incomingMessage.messageId}. Token available: ${!!token}`);
+
+                 if (token) {
+                    this.logger.log(`Attempting to download media for message ${incomingMessage.messageId} using token ${token.substring(0, 5)}...`);
+                    const downloaded = await this.uazapiService.downloadMedia(incomingMessage.messageId, token);
+                    if (downloaded) {
+                        buffer = downloaded.buffer;
+                        mimetype = downloaded.mimetype;
+                        filename = filename || downloaded.filename;
+                        this.logger.log(`Media downloaded successfully: ${mimetype} (${buffer.length} bytes)`);
+                    } else {
+                        this.logger.error(`Failed to download media for message ${incomingMessage.messageId}. This usually means the media is expired, the token is invalid, or the message structure is not supported by the gateway.`);
+                    }
+                 } else {
+                     this.logger.warn(`No token found for media download (Channel config or ENV) for message ${incomingMessage.messageId}`);
+                 }
+             }
+
+             // If buffer is still null, but we have a URL (e.g. from FileDownloaded event), try to download from URL
+             if (!buffer && incomingMessage.media.url && incomingMessage.media.url.startsWith('http')) {
+                 try {
+                     this.logger.log(`Attempting to download media from URL: ${incomingMessage.media.url}`);
+                     const response = await axios.get(incomingMessage.media.url, { responseType: 'arraybuffer' });
+                     buffer = Buffer.from(response.data);
+                     mimetype = response.headers['content-type'] || mimetype;
+                     this.logger.log(`Downloaded media from URL. Size: ${buffer.length}`);
+                 } catch (err) {
+                     this.logger.error(`Failed to download media from URL: ${incomingMessage.media.url}`, err);
+                 }
+             }
+
+             if (buffer) {
+                 // Fix for generic octet-stream mimetypes when we know the type
+                 if (mimetype === 'application/octet-stream') {
+                     if (mappedType === 'image') {
+                         mimetype = 'image/jpeg';
+                     } else if (mappedType === 'audio') {
+                         mimetype = 'audio/ogg'; // WhatsApp audios are usually ogg
+                     } else if (mappedType === 'video') {
+                         mimetype = 'video/mp4';
+                     } else if (filename) {
+                         // Attempt to guess from extension
+                         const ext = path.extname(filename).toLowerCase();
+                         if (ext === '.pdf') mimetype = 'application/pdf';
+                         else if (ext === '.doc') mimetype = 'application/msword';
+                         else if (ext === '.docx') mimetype = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+                         else if (ext === '.xls') mimetype = 'application/vnd.ms-excel';
+                         else if (ext === '.xlsx') mimetype = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+                         else if (ext === '.txt') mimetype = 'text/plain';
+                     }
+                 }
+
+                 let ext = 'bin';
+                 if (mimetype) {
+                    if (mimetype === 'application/pdf') ext = 'pdf';
+                    else if (mimetype === 'application/msword') ext = 'doc';
+                    else if (mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') ext = 'docx';
+                    else if (mimetype === 'application/vnd.ms-excel') ext = 'xls';
+                    else if (mimetype === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') ext = 'xlsx';
+                    else if (mimetype === 'text/plain') ext = 'txt';
+                    else if (mimetype === 'image/jpeg') ext = 'jpg';
+                    else if (mimetype === 'image/png') ext = 'png';
+                    else if (mimetype === 'audio/ogg') ext = 'ogg';
+                    else if (mimetype === 'audio/mpeg') ext = 'mp3';
+                    else if (mimetype === 'video/mp4') ext = 'mp4';
+                    else {
+                        ext = mimetype.split('/')[1].replace('; codecs=opus', '');
+                    }
+                 }
+
+                 let finalFilename = filename;
+                 if (!finalFilename) {
+                     finalFilename = `${Date.now()}-${Math.round(Math.random() * 10000)}.${ext}`;
+                 } else {
+                     // Ensure filename has extension
+                     if (!path.extname(finalFilename)) {
+                         finalFilename = `${finalFilename}.${ext}`;
+                     }
+                 }
+
                  const uploadDir = path.join(process.cwd(), 'uploads');
                  if (!fs.existsSync(uploadDir)) {
                      fs.mkdirSync(uploadDir, { recursive: true });
                  }
-                 const filepath = path.join(uploadDir, filename);
+                 const filepath = path.join(uploadDir, finalFilename);
                  
                  fs.writeFileSync(filepath, buffer);
-                 this.logger.log(`Saved media from Uazapi to ${filepath}`);
-                 
-                 const port = process.env.PORT || 3001;
-                 const appUrl = process.env.APP_URL || `http://localhost:${port}`;
-                 const url = `/uploads/${filename}`;
-                 
-                 attachments = {
-                     url: url,
-                     path: `/uploads/${filename}`,
-                     mimetype: incomingMessage.media.mimetype,
-                     filename: incomingMessage.media.fileName || filename,
-                     source: 'uazapi'
-                 };
+                this.logger.log(`Saved media from Uazapi to ${filepath}`);
+                
+                const url = `/uploads/${encodeURIComponent(finalFilename)}`;
+                
+                attachments = {
+                    url: url,
+                    path: `/uploads/${finalFilename}`,
+                    mimetype: mimetype,
+                    filename: finalFilename,
+                    name: incomingMessage.media.fileName || finalFilename,
+                    size: buffer.length,
+                    source: 'uazapi'
+                };
+
+                // Ensure mappedType is correct if we have a file
+                if (mappedType === 'text') {
+                    if (mimetype && mimetype.startsWith('image/')) mappedType = 'image';
+                    else if (mimetype && mimetype.startsWith('audio/')) mappedType = 'audio';
+                    else if (mimetype && mimetype.startsWith('video/')) mappedType = 'video';
+                    else mappedType = 'file';
+                    
+                    this.logger.log(`Corrected message type from text to ${mappedType} based on attachments`);
+                }
              } else if (incomingMessage.media.url) {
-                 // Use URL directly if no base64
+                 // Use URL directly if no base64 and download failed
                  attachments = {
                      url: incomingMessage.media.url,
                      mimetype: incomingMessage.media.mimetype,
                      filename: incomingMessage.media.fileName,
+                     name: incomingMessage.media.fileName || 'document',
                      source: 'uazapi'
                  };
              }
@@ -510,12 +620,43 @@ export class WebhooksController {
          }
       }
 
+      // Check if message already exists to avoid duplicates
+      // Especially for Uazapi which might send updates (like FileDownloadedMessage)
+      const existingMessage = await this.prisma.message.findFirst({
+        where: {
+           conversationId: conversation.id,
+           metadata: {
+              path: ['providerMessageId'],
+              equals: incomingMessage.messageId
+           }
+        }
+      });
+
+      if (existingMessage) {
+        this.logger.log(`Message ${incomingMessage.messageId} already exists. Checking for updates...`);
+        
+        // If the new message has attachments and the existing one doesn't (or has broken one), update it.
+        // Or if we just want to ensure we have the best version.
+        if (attachments && Object.keys(attachments).length > 0) {
+             this.logger.log(`Updating existing message ${existingMessage.id} with new attachments.`);
+             await this.messagesService.update(existingMessage.id, {
+                 attachments: attachments,
+                 type: mappedType
+             });
+             return { status: 'updated' };
+        }
+        
+        this.logger.log(`Message ${incomingMessage.messageId} is a duplicate and adds no new info. Ignoring.`);
+        return { status: 'ignored_duplicate' };
+      }
+
       await this.messagesService.create({
         conversationId: conversation.id,
         content: incomingMessage.message,
         senderType: 'contact',
         type: mappedType,
         attachments,
+        metadata: { providerMessageId: incomingMessage.messageId }
       });
       this.logger.log(
         `Inbound Uazapi message persisted: conversation=${conversation.id} type=${mappedType}`,

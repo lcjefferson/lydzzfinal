@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { ConversationItem } from '@/components/chat/conversation-item';
 import { MessageBubble } from '@/components/chat/message-bubble';
-import { Search, Send, Paperclip, MoreVertical, Wifi, WifiOff, Mail, Phone, Building, X, Mic, Square } from 'lucide-react';
+import { Search, Send, Paperclip, MoreVertical, Wifi, WifiOff, Mail, Phone, Building, X, Mic, Square, RefreshCw } from 'lucide-react';
 import { useConversations, useUpdateConversation } from '@/hooks/api/use-conversations';
 import { useMessages, useCreateMessage } from '@/hooks/api/use-messages';
 import { useSocket } from '@/hooks/use-socket';
@@ -93,6 +93,20 @@ export default function ConversationsPage() {
         }
     };
 
+    const handleSyncMessages = async () => {
+        if (effectiveSelectedId) {
+            try {
+                toast.info('Sincronizando mensagens...');
+                const res = await api.syncMessages(effectiveSelectedId);
+                toast.success(`${res} mensagens importadas!`);
+                queryClient.invalidateQueries({ queryKey: ['messages', effectiveSelectedId] });
+            } catch (error) {
+                console.error('Error syncing messages:', error);
+                toast.error('Erro ao sincronizar mensagens.');
+            }
+        }
+    };
+
     const { data: conversations, isLoading: conversationsLoading } = useConversations();
     const searchParams = useSearchParams();
     const contactParam = searchParams.get('contact');
@@ -163,7 +177,7 @@ export default function ConversationsPage() {
     };
 
     // WebSocket connection
-    const { isConnected, joinConversation, leaveConversation, onNewMessage, offNewMessage, onMessageCreated, offMessageCreated } = useSocket();
+    const { isConnected, joinConversation, leaveConversation, onNewMessage, offNewMessage, onMessageCreated, offMessageCreated, onMessageUpdated, offMessageUpdated } = useSocket();
 
     // Removed effect-based selection; selection derived from URL param or first item
 
@@ -190,12 +204,14 @@ export default function ConversationsPage() {
 
         onNewMessage(handleNewMessage);
         onMessageCreated(handleNewMessage);
+        onMessageUpdated(handleNewMessage);
 
         return () => {
             offNewMessage(handleNewMessage);
             offMessageCreated(handleNewMessage);
+            offMessageUpdated(handleNewMessage);
         };
-    }, [effectiveSelectedId, onNewMessage, offNewMessage, onMessageCreated, offMessageCreated, queryClient]);
+    }, [effectiveSelectedId, onNewMessage, offNewMessage, onMessageCreated, offMessageCreated, onMessageUpdated, offMessageUpdated, queryClient]);
 
     // Scroll to bottom when messages change
     useEffect(() => {
@@ -406,6 +422,14 @@ export default function ConversationsPage() {
                                 </div>
                             </div>
                             <div className="flex items-center gap-2">
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={handleSyncMessages}
+                                    title="Sincronizar Mensagens"
+                                >
+                                    <RefreshCw className="h-4 w-4" />
+                                </Button>
                                 <Badge variant={currentConversation.status === 'active' ? 'success' : 'default'}>
                                     {currentConversation.status}
                                 </Badge>

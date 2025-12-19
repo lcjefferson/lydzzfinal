@@ -36,6 +36,8 @@ export function useSocket() {
         offNewMessage: socketService.offNewMessage.bind(socketService),
         onMessageCreated: socketService.onMessageCreated.bind(socketService),
         offMessageCreated: socketService.offMessageCreated.bind(socketService),
+        onMessageUpdated: socketService.onMessageUpdated.bind(socketService),
+        offMessageUpdated: socketService.offMessageUpdated.bind(socketService),
         onTyping: socketService.onTyping.bind(socketService),
         offTyping: socketService.offTyping.bind(socketService),
     };

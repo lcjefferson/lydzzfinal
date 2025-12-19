@@ -67,6 +67,15 @@ export class ConversationsGateway
     this.server.emit('messageCreated', message);
   }
 
+  emitMessageUpdated(
+    conversationId: string,
+    message: import('@prisma/client').Message,
+  ) {
+    this.server
+      .to(`conversation_${conversationId}`)
+      .emit('messageUpdated', message);
+  }
+
   emitStatusChange(conversationId: string, status: string) {
     this.server
       .to(`conversation_${conversationId}`)

@@ -37,4 +37,7 @@ export class CreateMessageDto {
   @IsObject()
   @IsOptional()
   attachments?: Record<string, any>;
+
+  @IsOptional()
+  skipAI?: boolean;
 }
