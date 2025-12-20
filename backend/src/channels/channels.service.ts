@@ -32,6 +32,7 @@ export class ChannelsService {
     return this.prisma.channel.create({
       data: {
         type: dto.type,
+        provider: provider, // Added provider field
         name: dto.name,
         identifier: dto.identifier,
         accessToken: dto.accessToken,
