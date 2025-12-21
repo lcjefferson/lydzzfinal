@@ -410,6 +410,25 @@ export class MessagesService {
     setTimeout(() => {
       void (async () => {
         try {
+          const conversation = await this.prisma.conversation.findUnique({
+            where: { id: conversationId },
+            include: { agent: true },
+          });
+
+          if (!conversation || !conversation.agentId) {
+            return;
+          }
+
+          if (conversation.agent && !conversation.agent.isActive) {
+             return;
+          }
+
+          const apiKey = process.env.OPENAI_API_KEY;
+          if (!apiKey || apiKey.includes('your-') || apiKey.length < 10) {
+             // Silently skip if no valid key is configured to avoid logs spam
+             return;
+          }
+
           const aiResponse = await this.openAIService.generateResponse(
             conversationId,
             userMessage,
