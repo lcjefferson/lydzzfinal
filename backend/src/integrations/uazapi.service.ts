@@ -258,7 +258,9 @@ export class UazapiService {
         const err = error as any;
         this.logger.error(`Error downloading media from Uazapi: ${err.message}`);
         if (err.response) {
+            this.logger.error(`Uazapi error response status: ${err.response.status}`);
             this.logger.error(`Uazapi error response data: ${JSON.stringify(err.response.data)}`);
+            this.logger.error(`Uazapi error response headers: ${JSON.stringify(err.response.headers)}`);
         }
         return null;
     }
