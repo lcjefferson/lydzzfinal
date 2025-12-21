@@ -610,15 +610,8 @@ export class WebhooksController {
                     
                     this.logger.log(`Corrected message type from text to ${mappedType} based on attachments`);
                 }
-             } else if (incomingMessage.media.url) {
-                 // Use URL directly if no base64 and download failed
-                 attachments = {
-                     url: incomingMessage.media.url,
-                     mimetype: incomingMessage.media.mimetype,
-                     filename: incomingMessage.media.fileName,
-                     name: incomingMessage.media.fileName || 'document',
-                     source: 'uazapi'
-                 };
+             } else {
+                 this.logger.warn(`Failed to process media for message ${incomingMessage.messageId}. No valid buffer or URL available.`);
              }
          } catch (error) {
              this.logger.error('Error processing Uazapi media', error);
