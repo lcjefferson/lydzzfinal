@@ -480,15 +480,19 @@ export class MessagesService {
             })
           : null;
 
+      const envInstanceId = this.configService.get<string>('UAZAPI_INSTANCE_ID');
+      const envToken = this.configService.get<string>('UAZAPI_INSTANCE_TOKEN');
+
       const provider =
         (channel as unknown as { provider?: string }).provider ??
-        (config?.provider ?? (config?.instanceId && config?.token ? 'uazapi' : 'whatsapp-official'));
+        (config?.provider ?? 
+          ((config?.instanceId && config?.token) || (envInstanceId && envToken) ? 'uazapi' : 'whatsapp-official'));
 
       console.log(`Sending message via provider: ${provider}, to: ${conversation.contactIdentifier}`);
 
       if (provider === 'uazapi') {
-        const instanceId = config?.instanceId ?? this.configService.get<string>('UAZAPI_INSTANCE_ID');
-        const token = config?.token ?? this.configService.get<string>('UAZAPI_INSTANCE_TOKEN');
+        const instanceId = config?.instanceId ?? envInstanceId;
+        const token = config?.token ?? envToken;
         console.log(`Uazapi config - Instance: ${instanceId}, Token: ${token ? '***' : 'missing'}`);
         
         if (!instanceId || !token) {
@@ -516,9 +520,10 @@ export class MessagesService {
         return;
       }
 
-      const accessToken = config?.accessToken || channel.accessToken || undefined;
+      const accessToken = config?.accessToken || channel.accessToken || this.configService.get<string>('WHATSAPP_ACCESS_TOKEN');
+      const phoneNumberId = config?.phoneNumberId || this.configService.get<string>('WHATSAPP_PHONE_NUMBER_ID');
 
-      if (!config?.phoneNumberId || !accessToken) {
+      if (!phoneNumberId || !accessToken) {
         console.error('WhatsApp channel missing configuration');
         return;
       }
@@ -526,7 +531,7 @@ export class MessagesService {
       await this.whatsAppService.sendMessage(
         conversation.contactIdentifier,
         message,
-        config.phoneNumberId,
+        phoneNumberId,
         accessToken,
       );
     } catch (error) {

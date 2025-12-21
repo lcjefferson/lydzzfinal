@@ -33,8 +33,11 @@ export class UazapiService {
       // Endpoint identified via user documentation
       const url = `${this.apiUrl}/send/text`;
       
+      // Sanitize number: remove non-digits and suffixes
+      const cleanNumber = to.replace(/\D/g, '');
+
       const payload = {
-        number: to,
+        number: cleanNumber,
         text: message,
       };
 
@@ -77,6 +80,9 @@ export class UazapiService {
     try {
       const url = `${this.apiUrl}/send/media`;
       
+      // Sanitize number
+      const cleanNumber = to.replace(/\D/g, '');
+
       let fileToSend = mediaUrl;
       const appUrl = this.configService.get<string>('APP_URL');
 
@@ -103,7 +109,7 @@ export class UazapiService {
       }
       
       const payload: any = {
-        number: to,
+        number: cleanNumber,
         type: mediaType,
         file: fileToSend,
       };
