@@ -51,7 +51,7 @@ services:
         condition: service_healthy
     environment:
       NODE_ENV: production
-      PORT: 3000
+      PORT: 3000  
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-smarterchat}
       REDIS_HOST: redis
       REDIS_PORT: 6379
@@ -78,14 +78,14 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3000}
-        NEXT_PUBLIC_WS_URL: ${NEXT_PUBLIC_WS_URL:-http://localhost:3000}
+        NEXT_PUBLIC_API_URL: http://72.60.154.65:3000/api
+        NEXT_PUBLIC_WS_URL: http://72.60.154.65:3000
     container_name: lydzz-frontend
     restart: always
     depends_on:
       - backend
     environment:
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3000}
+      NEXT_PUBLIC_API_URL: http://72.60.154.65:3000/api
     ports:
       - "3001:3000"
     networks:
