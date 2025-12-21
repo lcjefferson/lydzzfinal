@@ -62,7 +62,9 @@ export class UazapiService {
         `Failed to send Uazapi message: ${err.message ?? 'unknown'}`,
       );
       if (err.response) {
-          this.logger.error(`Uazapi error response: ${JSON.stringify(err.response.data)}`);
+          this.logger.error(`Uazapi error response data: ${JSON.stringify(err.response.data)}`);
+          this.logger.error(`Uazapi error response status: ${err.response.status}`);
+          this.logger.error(`Uazapi error response headers: ${JSON.stringify(err.response.headers)}`);
       }
       return false;
     }
