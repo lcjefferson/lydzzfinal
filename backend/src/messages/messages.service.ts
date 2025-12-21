@@ -509,8 +509,9 @@ export class MessagesService {
       console.log(`Sending message via provider: ${provider}, to: ${conversation.contactIdentifier}`);
 
       if (provider === 'uazapi') {
-        const token = config?.token ?? envToken;
-        console.log(`Uazapi config - Token: ${token ? '***' : 'missing'}`);
+        // Use logic OR (||) to fallback to envToken if config.token is empty string
+        const token = config?.token || envToken;
+        console.log(`Uazapi config - Token: ${token ? '***' + token.slice(-4) : 'missing'}`);
         
         if (!token) {
           console.error('Uazapi channel missing configuration');
