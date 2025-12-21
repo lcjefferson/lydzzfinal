@@ -24,96 +24,115 @@ export function MessageBubble({ type, content, timestamp, senderName, confidence
      };
  
      const [mediaSrc, setMediaSrc] = useState<string | null>(null);
-     const [mediaError, setMediaError] = useState<string | null>(null);
-     const [mediaLoading, setMediaLoading] = useState(false);
- 
-     useEffect(() => {
-         const urlRaw = (attachments as { url?: unknown })?.url;
-         const urlStr = typeof urlRaw === 'string' ? urlRaw : null;
-         const mediaId = (attachments as { mediaId?: unknown })?.mediaId;
-         const mediaIdStr = typeof mediaId === 'string' ? mediaId : null;
- 
-         let objectUrl: string | null = null;
- 
-         async function loadMedia() {
-               // If no URL/ID yet, but it is a media type, we might be waiting for backend processing
-               if (!urlStr && !mediaIdStr) {
+    const [mediaError, setMediaError] = useState<string | null>(null);
+    const [mediaLoading, setMediaLoading] = useState(false);
+
+    // Extract stable primitives from attachments to prevent unnecessary re-renders/fetches
+    const attachmentUrl = (attachments as { url?: unknown })?.url;
+    const attachmentMediaId = (attachments as { mediaId?: unknown })?.mediaId;
+    const urlStr = typeof attachmentUrl === 'string' ? attachmentUrl : null;
+    const mediaIdStr = typeof attachmentMediaId === 'string' ? attachmentMediaId : null;
+
+    useEffect(() => {
+        let objectUrl: string | null = null;
+        let isMounted = true;
+
+        async function loadMedia() {
+              // If no URL/ID yet, but it is a media type, we might be waiting for backend processing
+              if (!urlStr && !mediaIdStr) {
+                  if (isMounted) setMediaSrc(null);
+                  // Keep loading true if we expect media but don't have it yet
+                  if (messageType !== 'text' && isMounted) {
+                      setMediaLoading(true);
+                  }
+                  return;
+              }
+
+              if (messageType === 'text') {
+                  if (isMounted) {
+                      setMediaSrc(null);
+                      setMediaLoading(false);
+                  }
+                  return;
+              }
+
+              // Handle local uploads (static files)
+              if (urlStr && urlStr.startsWith('/uploads')) {
+                  const baseApi = String(api.api.defaults.baseURL || '');
+                  const root = baseApi.replace(/\/api\/?$/, '');
+                  const fullUrl = `${root}${urlStr}`;
+
+                  // Special handling for audio: fetch as blob to ensure duration works
+                  // This fixes the "0 seconds" bug on reload
+                  if (messageType === 'audio') {
+                      try {
+                          if (isMounted) {
+                              setMediaLoading(true);
+                              setMediaError(null);
+                          }
+                          const response = await api.api.get(fullUrl, { responseType: 'blob' });
+                          if (!isMounted) return;
+                          
+                          const blob = response.data as Blob;
+                          objectUrl = URL.createObjectURL(blob);
+                          setMediaSrc(objectUrl);
+                      } catch {
+                          if (isMounted) {
+                              setMediaError('Erro no arquivo');
+                              setMediaSrc(null);
+                          }
+                      } finally {
+                          if (isMounted) setMediaLoading(false);
+                      }
+                      return;
+                  }
+
+                  if (isMounted) {
+                      setMediaSrc(fullUrl);
+                      setMediaLoading(false); // Local files don't need async fetch to get URL
+                  }
+                  return;
+              }
+
+              try {
+               if (isMounted) {
+                   setMediaLoading(true);
+                   setMediaError(null);
+               }
+               const base = String(api.api.defaults.baseURL || '').replace(/\/$/, '');
+               const requestUrl =
+                   mediaIdStr
+                       ? `${base}/media/whatsapp/${encodeURIComponent(mediaIdStr)}`
+                       : (urlStr as string);
+               
+               // For external URLs (not local uploads), we might need to fetch blob
+               // But if it's a direct public URL, we might just use it.
+               // Assuming this path is for proxied media or protected resources
+               const response = await api.api.get(requestUrl, { responseType: 'blob' });
+               if (!isMounted) return;
+
+               const blob = response.data as Blob;
+               objectUrl = URL.createObjectURL(blob);
+               setMediaSrc(objectUrl);
+           } catch {
+               if (isMounted) {
+                   setMediaError('Erro no arquivo');
                    setMediaSrc(null);
-                   // Keep loading true if we expect media but don't have it yet
-                   if (messageType !== 'text') {
-                       setMediaLoading(true);
-                   }
-                   return;
                }
+           } finally {
+               if (isMounted) setMediaLoading(false);
+           }
+       }
 
-               if (messageType === 'text') {
-                   setMediaSrc(null);
-                   setMediaLoading(false);
-                   return;
-               }
+       void loadMedia();
 
-               // Handle local uploads (static files)
-               if (urlStr && urlStr.startsWith('/uploads')) {
-                   const baseApi = String(api.api.defaults.baseURL || '');
-                   const root = baseApi.replace(/\/api\/?$/, '');
-                   const fullUrl = `${root}${urlStr}`;
-
-                   // Special handling for audio: fetch as blob to ensure duration works
-                   // This fixes the "0 seconds" bug on reload
-                   if (messageType === 'audio') {
-                       try {
-                           setMediaLoading(true);
-                           setMediaError(null);
-                           const response = await api.api.get(fullUrl, { responseType: 'blob' });
-                           const blob = response.data as Blob;
-                           objectUrl = URL.createObjectURL(blob);
-                           setMediaSrc(objectUrl);
-                       } catch {
-                           setMediaError('Erro no arquivo');
-                           setMediaSrc(null);
-                       } finally {
-                           setMediaLoading(false);
-                       }
-                       return;
-                   }
-
-                   setMediaSrc(fullUrl);
-                   setMediaLoading(false); // Local files don't need async fetch to get URL
-                   return;
-               }
-
-               try {
-                setMediaLoading(true);
-                setMediaError(null);
-                const base = String(api.api.defaults.baseURL || '').replace(/\/$/, '');
-                const requestUrl =
-                    mediaIdStr
-                        ? `${base}/media/whatsapp/${encodeURIComponent(mediaIdStr)}`
-                        : (urlStr as string);
-                
-                // For external URLs (not local uploads), we might need to fetch blob
-                // But if it's a direct public URL, we might just use it.
-                // Assuming this path is for proxied media or protected resources
-                const response = await api.api.get(requestUrl, { responseType: 'blob' });
-                const blob = response.data as Blob;
-                objectUrl = URL.createObjectURL(blob);
-                setMediaSrc(objectUrl);
-            } catch {
-                setMediaError('Erro no arquivo');
-                setMediaSrc(null);
-            } finally {
-                setMediaLoading(false);
-            }
-        }
-
-        void loadMedia();
-
-        return () => {
-            if (objectUrl) {
-                URL.revokeObjectURL(objectUrl);
-            }
-        };
-    }, [messageType, attachments]);
+       return () => {
+           isMounted = false;
+           if (objectUrl) {
+               URL.revokeObjectURL(objectUrl);
+           }
+       };
+    }, [messageType, urlStr, mediaIdStr]);
 
     const getFileIcon = (filename: string) => {
         const ext = filename.split('.').pop()?.toLowerCase();
