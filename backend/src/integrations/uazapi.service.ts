@@ -191,7 +191,7 @@ export class UazapiService {
             id: messageId,
             return_base64: true, // Request base64 directly
             generate_mp3: false,
-            return_link: false,
+            return_link: true,   // Request link as fallback
             transcribe: false,
             download_quoted: false
         };
@@ -227,16 +227,39 @@ export class UazapiService {
                 mimetype,
                 filename: response.data.filename
             };
-        } else {
-             this.logger.warn(`Download media response missing base64. Data keys: ${Object.keys(response.data || {}).join(', ')}`);
-             if (response.data) {
-                 this.logger.warn(`Response data snippet: ${JSON.stringify(response.data).substring(0, 200)}`);
+        } else if (response.data && response.data.link) {
+             this.logger.log(`Base64 missing, attempting to download from link: ${response.data.link}`);
+             try {
+                 const linkResponse = await axios.get(response.data.link, { 
+                     responseType: 'arraybuffer',
+                     timeout: 10000 
+                 });
+                 const buffer = Buffer.from(linkResponse.data);
+                 const mimetype = linkResponse.headers['content-type'] || response.data.mimetype || 'application/octet-stream';
+                 this.logger.log(`Downloaded media from link. Size: ${buffer.length}`);
+                 return {
+                     buffer,
+                     mimetype,
+                     filename: response.data.filename
+                 };
+             } catch (linkError) {
+                 this.logger.error(`Failed to download from link: ${(linkError as Error).message}`);
              }
         }
+        
+        this.logger.warn(`Download media response missing base64 and link. Data keys: ${Object.keys(response.data || {}).join(', ')}`);
+        if (response.data) {
+             this.logger.warn(`Response data: ${JSON.stringify(response.data)}`);
+        }
+        
 
         return null;
     } catch (error) {
-        this.logger.error(`Error downloading media from Uazapi: ${(error as Error).message}`);
+        const err = error as any;
+        this.logger.error(`Error downloading media from Uazapi: ${err.message}`);
+        if (err.response) {
+            this.logger.error(`Uazapi error response data: ${JSON.stringify(err.response.data)}`);
+        }
         return null;
     }
   }
