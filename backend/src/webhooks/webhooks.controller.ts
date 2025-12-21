@@ -571,13 +571,17 @@ export class WebhooksController {
                  }
 
                  let finalFilename = filename;
+                 const uniquePrefix = `${Date.now()}-${Math.round(Math.random() * 10000)}`;
+                 
                  if (!finalFilename) {
-                     finalFilename = `${Date.now()}-${Math.round(Math.random() * 10000)}.${ext}`;
+                     finalFilename = `${uniquePrefix}.${ext}`;
                  } else {
                      // Ensure filename has extension
                      if (!path.extname(finalFilename)) {
                          finalFilename = `${finalFilename}.${ext}`;
                      }
+                     // Prepend unique prefix to prevent overwrites and caching issues
+                     finalFilename = `${uniquePrefix}-${finalFilename}`;
                  }
 
                  const uploadDir = path.join(process.cwd(), 'uploads');
@@ -612,6 +616,11 @@ export class WebhooksController {
                 }
              } else {
                  this.logger.warn(`Failed to process media for message ${incomingMessage.messageId}. No valid buffer or URL available.`);
+                 // Fallback to text to avoid "loading forever" in frontend
+                 mappedType = 'text';
+                 incomingMessage.message = incomingMessage.message 
+                    ? `${incomingMessage.message} (Erro: Mídia não disponível)`
+                    : '[Erro: Mídia não disponível - Falha no download]';
              }
          } catch (error) {
              this.logger.error('Error processing Uazapi media', error);

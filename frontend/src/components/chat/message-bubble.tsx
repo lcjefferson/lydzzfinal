@@ -44,6 +44,13 @@ export function MessageBubble({ type, content, timestamp, senderName, confidence
                   // Keep loading true if we expect media but don't have it yet
                   if (messageType !== 'text' && isMounted) {
                       setMediaLoading(true);
+                      // Set a timeout to stop loading if it takes too long (e.g. 15s)
+                      setTimeout(() => {
+                          if (isMounted) {
+                              setMediaLoading(false);
+                              setMediaError('Mídia indisponível');
+                          }
+                      }, 15000);
                   }
                   return;
               }
