@@ -330,11 +330,6 @@ class ApiService {
         await this.api.delete(`/messages/${id}`);
     }
 
-    async syncMessages(conversationId: string): Promise<number> {
-        const response = await this.api.post<number>(`/messages/sync/${conversationId}`);
-        return response.data;
-    }
-
     // Upload
     async uploadFile(file: File): Promise<{ path: string; filename: string; originalName: string; mimetype: string }> {
         const formData = new FormData();

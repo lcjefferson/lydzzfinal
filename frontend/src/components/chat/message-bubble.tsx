@@ -42,20 +42,13 @@ export function MessageBubble({ type, content, timestamp, senderName, confidence
               if (!urlStr && !mediaIdStr) {
                   if (isMounted) setMediaSrc(null);
                   // Keep loading true if we expect media but don't have it yet
-                  if (messageType !== 'text' && isMounted) {
+                  if (messageType && messageType !== 'text' && isMounted) {
                       setMediaLoading(true);
-                      // Set a timeout to stop loading if it takes too long (e.g. 15s)
-                      setTimeout(() => {
-                          if (isMounted) {
-                              setMediaLoading(false);
-                              setMediaError('Mídia indisponível');
-                          }
-                      }, 15000);
                   }
                   return;
               }
 
-              if (messageType === 'text') {
+              if (!messageType || messageType === 'text') {
                   if (isMounted) {
                       setMediaSrc(null);
                       setMediaLoading(false);
@@ -65,9 +58,9 @@ export function MessageBubble({ type, content, timestamp, senderName, confidence
 
               // Handle local uploads (static files)
               if (urlStr && urlStr.startsWith('/uploads')) {
-                  // Use relative URL to leverage Next.js rewrites (proxies to backend)
-                  // This avoids CORS and port issues
-                  const relativeUrl = urlStr;
+                  const baseApi = String(api.api.defaults.baseURL || '');
+                  const root = baseApi.replace(/\/api\/?$/, '');
+                  const fullUrl = `${root}${urlStr}`;
 
                   // Special handling for audio: fetch as blob to ensure duration works
                   // This fixes the "0 seconds" bug on reload
@@ -77,17 +70,13 @@ export function MessageBubble({ type, content, timestamp, senderName, confidence
                               setMediaLoading(true);
                               setMediaError(null);
                           }
-                          // Use fetch for static files (proxied by Next.js)
-                          const response = await fetch(relativeUrl);
-                          if (!response.ok) throw new Error('Failed to load audio');
-                          
-                          const blob = await response.blob();
+                          const response = await api.api.get(fullUrl, { responseType: 'blob' });
                           if (!isMounted) return;
                           
+                          const blob = response.data as Blob;
                           objectUrl = URL.createObjectURL(blob);
                           setMediaSrc(objectUrl);
-                      } catch (err) {
-                          console.error('Error loading audio:', err);
+                      } catch {
                           if (isMounted) {
                               setMediaError('Erro no arquivo');
                               setMediaSrc(null);
@@ -99,7 +88,7 @@ export function MessageBubble({ type, content, timestamp, senderName, confidence
                   }
 
                   if (isMounted) {
-                      setMediaSrc(relativeUrl);
+                      setMediaSrc(fullUrl);
                       setMediaLoading(false); // Local files don't need async fetch to get URL
                   }
                   return;
@@ -211,7 +200,7 @@ export function MessageBubble({ type, content, timestamp, senderName, confidence
                            {fileName}
                        </span>
                    </a>
-               ) : (mediaLoading || (messageType !== 'text' && !mediaSrc && !mediaError)) ? (
+               ) : (mediaLoading || (messageType && messageType !== 'text' && !mediaSrc && !mediaError)) ? (
                     <div className="flex items-center gap-2 text-sm opacity-70">
                         <div className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full" />
                         <span>Carregando {messageType === 'image' ? 'imagem' : 'mídia'}...</span>

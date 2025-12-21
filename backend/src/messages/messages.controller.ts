@@ -22,11 +22,6 @@ export class MessagesController {
     return this.messagesService.create(createMessageDto);
   }
 
-  @Post('sync/:conversationId')
-  sync(@Param('conversationId') conversationId: string) {
-    return this.messagesService.syncMessages(conversationId);
-  }
-
   @Get()
   findAll(@Query('conversationId') conversationId: string) {
     return this.messagesService.findAll(conversationId);

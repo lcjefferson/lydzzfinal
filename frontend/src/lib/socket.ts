@@ -78,15 +78,6 @@ class SocketService {
         this.socket?.off('messageCreated', callback);
     }
 
-    // Listen for message updated
-    onMessageUpdated(callback: (message: Message) => void): void {
-        this.socket?.on('messageUpdated', callback);
-    }
-
-    offMessageUpdated(callback: (message: Message) => void): void {
-        this.socket?.off('messageUpdated', callback);
-    }
-
     onTyping(callback: (payload: { conversationId: string; userId?: string; name?: string; at: number }) => void): void {
         this.socket?.on('typing', callback);
     }
