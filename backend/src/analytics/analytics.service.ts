@@ -11,7 +11,10 @@ export class AnalyticsService {
     role?: string,
     organizationId?: string,
   ) {
-    const whereConversation: Prisma.ConversationWhereInput = { organizationId };
+    const whereConversation: Prisma.ConversationWhereInput = {
+      organizationId,
+      channel: { type: { not: 'internal' } },
+    };
     const whereLead: Prisma.LeadWhereInput = {
       organizationId,
       status: { not: 'lost' },
@@ -41,14 +44,32 @@ export class AnalyticsService {
     };
   }
 
-  async getConversationStats() {
+  async getConversationStats(
+    userId?: string,
+    role?: string,
+    organizationId?: string,
+  ) {
+    const where: Prisma.ConversationWhereInput = {
+      organizationId,
+      channel: { type: { not: 'internal' } },
+    };
+
+    const r = String(role || '').toLowerCase();
+    if (r && r !== 'admin' && r !== 'manager') {
+      Object.assign(where, {
+        OR: [{ assignedToId: userId }, { lead: { assignedToId: userId } }],
+      });
+    }
+
     const byStatus = await this.prisma.conversation.groupBy({
       by: ['status'],
+      where,
       _count: { id: true },
     });
 
     const byChannel = await this.prisma.conversation.groupBy({
       by: ['channelId'],
+      where,
       _count: { id: true },
     });
 

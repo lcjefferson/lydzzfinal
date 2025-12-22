@@ -56,6 +56,7 @@ describe('AnalyticsService', () => {
         expect.objectContaining({
           where: expect.objectContaining({
             organizationId,
+            channel: { type: { not: 'internal' } },
             OR: [
               { assignedToId: userId },
               { lead: { assignedToId: userId } },

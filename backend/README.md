@@ -121,6 +121,11 @@ The analytics endpoints (`/analytics/dashboard`, etc.) apply automatic filtering
   - Conversations assigned to them (`assignedToId`).
   - Leads assigned to them (`lead.assignedToId`).
 
+**Note on Conversation Counts:**
+Both the Dashboard and the Conversation List (Menu) explicitly **exclude** "Internal" channels (e.g., team chat rooms) from the counts. This ensures that metrics reflect only customer-facing interactions.
+- If you see a discrepancy, check if some conversations are marked as `internal`.
+- The logic is now unified: Dashboard, Stats, and List all use the same `channel: { type: { not: 'internal' } }` filter.
+
 This ensures consultants only see their own performance metrics and workload.
 
 ## 🔌 WebSocket Events

@@ -17,8 +17,12 @@ export class AnalyticsController {
   }
 
   @Get('conversations')
-  getConversationStats() {
-    return this.analyticsService.getConversationStats();
+  getConversationStats(@Request() req) {
+    return this.analyticsService.getConversationStats(
+      req.user.id,
+      req.user.role,
+      req.user.organizationId,
+    );
   }
 
   @Get('leads')
