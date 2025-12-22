@@ -40,5 +40,7 @@ export function useSocket() {
         offMessageUpdated: socketService.offMessageUpdated.bind(socketService),
         onTyping: socketService.onTyping.bind(socketService),
         offTyping: socketService.offTyping.bind(socketService),
+        onNotificationCreated: socketService.onNotificationCreated.bind(socketService),
+        offNotificationCreated: socketService.offNotificationCreated.bind(socketService),
     };
 }

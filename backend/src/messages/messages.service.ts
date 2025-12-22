@@ -11,6 +11,7 @@ import { ConversationsGateway } from '../conversations/conversations.gateway';
 import { OpenAIService } from '../common/openai.service';
 import { WhatsAppService } from '../integrations/whatsapp.service';
 import { UazapiService } from '../integrations/uazapi.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class MessagesService {
@@ -23,6 +24,7 @@ export class MessagesService {
     private readonly whatsAppService: WhatsAppService,
     private readonly uazapiService: UazapiService,
     private readonly configService: ConfigService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   async syncMessages(conversationId: string): Promise<number> {
@@ -270,6 +272,21 @@ export class MessagesService {
           await this.prisma.conversation.update({
             where: { id: conversation.id },
             data: { leadId: lead.id },
+          });
+        }
+
+        if (lead.assignedToId) {
+          await this.notificationsService.create({
+            type: 'lead_message_received',
+            entityId: lead.id,
+            userId: lead.assignedToId,
+            organizationId: lead.organizationId,
+            data: {
+              leadId: lead.id,
+              leadName: lead.name,
+              messageContent: dto.content,
+              conversationId: conversation.id,
+            },
           });
         }
       }
