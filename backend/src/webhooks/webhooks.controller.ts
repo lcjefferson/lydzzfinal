@@ -13,6 +13,7 @@ import {
 } from '@nestjs/common';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as https from 'https';
 import axios from 'axios';
 import { WebhooksService } from './webhooks.service';
 import { CreateWebhookDto } from './dto/create-webhook.dto';
@@ -355,6 +356,11 @@ export class WebhooksController {
           return { status: 'ignored_group' };
       }
 
+      if (incomingMessage.fromMe) {
+          this.logger.log(`Ignoring message sent by me (echo) from ${incomingMessage.from}`);
+          return { status: 'ignored_from_me' };
+      }
+
       this.logger.log(`Parsed message: ${JSON.stringify(incomingMessage, null, 2)}`);
 
       const channels = await this.prisma.channel.findMany({
@@ -523,12 +529,17 @@ export class WebhooksController {
              if (!buffer && incomingMessage.media.url && incomingMessage.media.url.startsWith('http')) {
                  try {
                      this.logger.log(`Attempting to download media from URL: ${incomingMessage.media.url}`);
+                     
+                     // Create HTTPS agent to ignore self-signed certificates for fallback download
+                     const httpsAgent = new https.Agent({ rejectUnauthorized: false });
+
                      const response = await axios.get(incomingMessage.media.url, { 
                          responseType: 'arraybuffer',
                          timeout: 30000,
                          headers: {
                              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-                         }
+                         },
+                         httpsAgent: httpsAgent
                      });
                      const contentType = response.headers['content-type'];
                      if (contentType && (contentType.includes('text/html') || contentType.includes('application/json') || contentType.includes('text/plain'))) {
