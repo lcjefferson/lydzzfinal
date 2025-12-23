@@ -216,6 +216,8 @@ export class UazapiService {
             download_quoted: false
         };
 
+        this.logger.log(`Downloading media from ${url} with payload: ${JSON.stringify(payload)}`);
+
         const response = await axios.post(url, payload, {
             headers: {
                 'Content-Type': 'application/json',
