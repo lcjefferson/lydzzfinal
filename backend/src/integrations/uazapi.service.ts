@@ -15,9 +15,10 @@ export class UazapiService {
   private readonly apiUrl: string;
 
   constructor(private readonly configService: ConfigService) {
-    this.apiUrl =
+    const url =
       this.configService.get<string>('UAZAPI_API_URL') ??
       'https://api.uazapi.dev';
+    this.apiUrl = url.replace(/\/$/, ''); // Remove trailing slash
   }
 
   /**
@@ -206,10 +207,11 @@ export class UazapiService {
         this.logger.log(`Attempting to download media for message ${messageId}`);
         const url = `${this.apiUrl}/message/download`;
         const payload = {
-            id: messageId,
-            return_base64: true, // Request base64 directly
+            messageId: messageId, // Try 'messageId' as key first
+            id: messageId,        // Keep 'id' for compatibility
+            return_base64: true, 
             generate_mp3: false,
-            return_link: true,   // Request link as fallback
+            return_link: true,   
             transcribe: false,
             download_quoted: false
         };
@@ -220,7 +222,7 @@ export class UazapiService {
                 'Accept': 'application/json',
                 'token': token,
             },
-            timeout: 30000 // Increased timeout to 30s
+            timeout: 30000 
         });
 
         this.logger.log(`Download media response status: ${response.status}`);
