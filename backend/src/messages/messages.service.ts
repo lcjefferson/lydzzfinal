@@ -518,10 +518,27 @@ export class MessagesService {
 
       const envToken = this.configService.get<string>('UAZAPI_INSTANCE_TOKEN');
 
-      const provider =
-        (channel as unknown as { provider?: string }).provider ??
-        (config?.provider ?? 
-          ((config?.token) || (envToken) ? 'uazapi' : 'whatsapp-official'));
+      let provider = (channel as unknown as { provider?: string }).provider;
+
+      // Smart provider detection logic
+      // If provider says 'whatsapp-official' (default) but config looks like Uazapi, switch to Uazapi
+      if (!provider || provider === 'whatsapp-official') {
+          const hasUazapiToken = !!(config?.token || envToken);
+          const hasOfficialConfig = !!(config?.phoneNumberId || channel.accessToken || this.configService.get('WHATSAPP_ACCESS_TOKEN'));
+          
+          // If we have Uazapi token but no explicit Official config in the channel itself (ignoring env fallback for official for a moment to be safe, or checking if env fallback is actually used)
+          // Actually, let's prioritize Uazapi if explicit config is present
+          if (config?.token || config?.instanceId) {
+             provider = 'uazapi';
+          } else if (hasUazapiToken && !hasOfficialConfig) {
+             provider = 'uazapi';
+          }
+      }
+      
+      // Explicit override from config
+      if (config?.provider) {
+          provider = config.provider;
+      }
 
       console.log(`Sending message via provider: ${provider}, to: ${conversation.contactIdentifier}`);
 
@@ -536,19 +553,25 @@ export class MessagesService {
         }
 
         if (mediaUrl && mediaType) {
-          await this.uazapiService.sendMediaMessage(
+          const success = await this.uazapiService.sendMediaMessage(
             conversation.contactIdentifier,
             mediaUrl,
             mediaType,
             message,
             token,
           );
+          if (!success) {
+            this.logger.error(`Failed to send media message via Uazapi to ${conversation.contactIdentifier}`);
+          }
         } else {
-          await this.uazapiService.sendMessage(
+          const success = await this.uazapiService.sendMessage(
             conversation.contactIdentifier,
             message,
             token,
           );
+          if (!success) {
+            this.logger.error(`Failed to send text message via Uazapi to ${conversation.contactIdentifier}`);
+          }
         }
         return;
       }
