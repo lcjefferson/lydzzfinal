@@ -222,13 +222,16 @@ export class UazapiService {
 
         this.logger.log(`Downloading media from ${url} with payload: ${JSON.stringify(payload)}`);
 
+        const httpsAgent = new https.Agent({ rejectUnauthorized: false });
+
         const response = await axios.post(url, payload, {
             headers: {
                 'Content-Type': 'application/json',
                 'Accept': 'application/json',
                 'token': token,
             },
-            timeout: 30000 
+            timeout: 30000,
+            httpsAgent 
         });
 
         this.logger.log(`Download media response status: ${response.status}`);
