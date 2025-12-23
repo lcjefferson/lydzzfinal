@@ -588,6 +588,7 @@ export default function ChannelsPage() {
                                                                             ...((channel.config || {}) as Record<string, unknown>),
                                                                             instanceId: uazInstanceId,
                                                                             token: uazToken,
+                                                                            serverUrl: uazServerUrl,
                                                                             webhookUrl: uazWebhookUrl,
                                                                         },
                                                                     },

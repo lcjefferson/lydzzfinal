@@ -512,6 +512,7 @@ export class MessagesService {
               accessToken?: string;
               instanceId?: string;
               token?: string;
+              serverUrl?: string;
               provider?: 'whatsapp-official' | 'uazapi';
             })
           : null;
@@ -558,6 +559,7 @@ export class MessagesService {
             mediaUrl,
             mediaType,
             message,
+            config?.serverUrl,
             token,
           );
           if (!success) {
@@ -566,7 +568,8 @@ export class MessagesService {
         } else {
           const success = await this.uazapiService.sendMessage(
             conversation.contactIdentifier,
-            message,
+            messa,
+            config?.serverUrlge,
             token,
           );
           if (!success) {

@@ -27,10 +27,12 @@ export class UazapiService {
     to: string,
     message: string,
     token: string,
+    apiUrl?: string,
   ): Promise<boolean> {
     try {
       // Endpoint identified via user documentation
-      const url = `${this.apiUrl}/send/text`;
+      const baseUrl = apiUrl || this.apiUrl;
+      const url = `${baseUrl}/send/text`;
       
       // Sanitize number: remove non-digits and suffixes
       const cleanNumber = to.replace(/\D/g, '');
@@ -76,9 +78,11 @@ export class UazapiService {
     mediaType: 'image' | 'video' | 'audio' | 'document',
     caption: string,
     token: string,
+    apiUrl?: string,
   ): Promise<boolean> {
     try {
-      const url = `${this.apiUrl}/send/media`;
+      const baseUrl = apiUrl || this.apiUrl;
+      const url = `${baseUrl}/send/media`;
       
       // Sanitize number
       const cleanNumber = to.replace(/\D/g, '');
