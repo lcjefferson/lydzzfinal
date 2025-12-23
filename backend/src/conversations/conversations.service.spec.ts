@@ -45,6 +45,22 @@ describe('ConversationsService', () => {
   });
 
   describe('findAll', () => {
+    it('should filter conversations by organizationId', async () => {
+      const userId = 'user-1';
+      const role = 'admin';
+      const organizationId = 'org-1';
+
+      await service.findAll(userId, role, organizationId);
+
+      expect(prismaService.conversation.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            organizationId: organizationId,
+          }),
+        }),
+      );
+    });
+
     it('should filter conversations for consultant user', async () => {
       const userId = 'user-1';
       const role = 'user'; // consultant
@@ -75,8 +91,6 @@ describe('ConversationsService', () => {
       const args = calls[calls.length - 1][0]; // last call args
       
       // Check that OR filter with userId is NOT present
-      // The current implementation adds channel type filter, so 'where' is not empty.
-      // But it should not have the user assignment filter.
       if (args.where.OR) {
           const hasUserFilter = args.where.OR.some((cond: any) => cond.assignedToId === userId);
           expect(hasUserFilter).toBeFalsy();

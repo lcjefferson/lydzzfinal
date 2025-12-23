@@ -2,13 +2,13 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateConversationDto } from './dto/create-conversation.dto';
 import { UpdateConversationDto } from './dto/update-conversation.dto';
-import { Conversation, Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class ConversationsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(dto: CreateConversationDto): Promise<Conversation> {
+  async create(dto: CreateConversationDto) {
     const organization = await this.prisma.organization.findFirst();
     if (!organization) {
       throw new Error('No organization found');
@@ -53,9 +53,11 @@ export class ConversationsService {
     userId?: string,
     role?: string,
     _organizationId?: string,
-  ): Promise<Conversation[]> {
-    void _organizationId;
-    const where: Prisma.ConversationWhereInput = {};
+  ) {
+    const where: any = {};
+    if (_organizationId) {
+      Object.assign(where, { organizationId: _organizationId });
+    }
     Object.assign(where, { channel: { type: { not: 'internal' } } });
     const r = String(role || '').toLowerCase();
     if (r && r !== 'admin' && r !== 'manager') {
@@ -92,14 +94,14 @@ export class ConversationsService {
     });
   }
 
-  async update(id: string, dto: UpdateConversationDto): Promise<Conversation> {
+  async update(id: string, dto: UpdateConversationDto) {
     return this.prisma.conversation.update({
       where: { id },
       data: dto,
     });
   }
 
-  async remove(id: string): Promise<Conversation> {
+  async remove(id: string) {
     return this.prisma.conversation.delete({ where: { id } });
   }
 }
