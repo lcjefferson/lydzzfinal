@@ -264,9 +264,15 @@ export class UazapiService {
         if (link) {
              this.logger.log(`Base64 missing, attempting to download from link: ${link}`);
              try {
+                 // Create an HTTPS agent that ignores self-signed certificate errors
+                 const httpsAgent = new https.Agent({  
+                     rejectUnauthorized: false
+                 });
+
                  const linkResponse = await axios.get(link, { 
                      responseType: 'arraybuffer',
-                     timeout: 30000 
+                     timeout: 30000,
+                     httpsAgent: httpsAgent
                  });
                  const buffer = Buffer.from(linkResponse.data);
                  const mimetype = linkResponse.headers['content-type'] || responseData.mimetype || 'application/octet-stream';
@@ -363,6 +369,7 @@ export class UazapiService {
     instanceId?: string;
     contactName?: string;
     isGroup?: boolean;
+    fromMe?: boolean;
     media?: {
       type: 'image' | 'video' | 'audio' | 'document' | 'sticker';
       url?: string;
@@ -430,6 +437,7 @@ export class UazapiService {
               timestamp,
               type,
               instanceId,
+              fromMe: false,
               media: {
                   type: type as any,
                   url: fileUrl,
@@ -515,6 +523,9 @@ export class UazapiService {
 
       const instanceId = payload.instanceId || payload.instance_id || payload.owner;
       const contactName = messageData.pushName || messageData.senderName || messageData.contact?.name || messageData.notifyName || payload.chat?.contactName;
+
+      // Extract fromMe
+      const fromMe = messageData.key?.fromMe || messageData.fromMe || false;
 
       // Extract media details
       let media: any = undefined;
@@ -720,9 +731,10 @@ export class UazapiService {
         messageId,
         timestamp,
         type,
-        instanceId, 
+        instanceId,
         contactName,
         isGroup,
+        fromMe,
         media,
       };
     } catch (error) {
