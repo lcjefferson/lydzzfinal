@@ -2,8 +2,26 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import type { CreateConversationDto, UpdateConversationDto } from '@/types/api';
 import { toast } from 'sonner';
+import { useEffect } from 'react';
+import { socketService } from '@/lib/socket';
 
 export function useConversations() {
+    const queryClient = useQueryClient();
+
+    useEffect(() => {
+        const handleUpdate = () => {
+            queryClient.invalidateQueries({ queryKey: ['conversations'] });
+        };
+
+        socketService.onMessageCreated(handleUpdate);
+        socketService.onStatusChange(handleUpdate);
+
+        return () => {
+            socketService.offMessageCreated(handleUpdate);
+            socketService.offStatusChange(handleUpdate);
+        };
+    }, [queryClient]);
+
     return useQuery({
         queryKey: ['conversations'],
         queryFn: () => api.getConversations(),

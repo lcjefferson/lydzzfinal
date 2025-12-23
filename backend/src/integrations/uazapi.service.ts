@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
+import * as https from 'https'; // Import https module
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -15,9 +16,13 @@ export class UazapiService {
   private readonly apiUrl: string;
 
   constructor(private readonly configService: ConfigService) {
-    this.apiUrl =
-      this.configService.get<string>('UAZAPI_API_URL') ??
-      'https://api.uazapi.dev';
+    let url = this.configService.get<string>('UAZAPI_API_URL');
+    if (!url || url.trim() === '') {
+        this.logger.warn('UAZAPI_API_URL is not defined or empty. Defaulting to https://api.uazapi.dev');
+        url = 'https://api.uazapi.dev';
+    }
+    this.apiUrl = url.replace(/\/$/, ''); // Remove trailing slash
+    this.logger.log(`UazapiService initialized with API URL: ${this.apiUrl}`);
   }
 
   /**
@@ -27,13 +32,23 @@ export class UazapiService {
     to: string,
     message: string,
     token: string,
+    apiUrl?: string,
   ): Promise<boolean> {
     try {
       // Endpoint identified via user documentation
-      const url = `${this.apiUrl}/send/text`;
+      const baseUrl = apiUrl || this.apiUrl;
+      const url = `${baseUrl}/send/text`;
       
       // Sanitize number: remove non-digits and suffixes
-      const cleanNumber = to.replace(/\D/g, '');
+      let cleanNumber = to.replace(/\D/g, '');
+
+      // Check if it looks like a Brazilian number without country code (10 or 11 digits)
+      // and prepends 55 if necessary. 
+      // This is a heuristic: Brazil DDDs are 11-99.
+      if ((cleanNumber.length === 10 || cleanNumber.length === 11) && parseInt(cleanNumber.substring(0, 2)) >= 11) {
+          cleanNumber = '55' + cleanNumber;
+          this.logger.log(`Prepended 55 to number: ${cleanNumber}`);
+      }
 
       const payload = {
         number: cleanNumber,
@@ -76,12 +91,20 @@ export class UazapiService {
     mediaType: 'image' | 'video' | 'audio' | 'document',
     caption: string,
     token: string,
+    apiUrl?: string,
   ): Promise<boolean> {
     try {
-      const url = `${this.apiUrl}/send/media`;
+      const baseUrl = apiUrl || this.apiUrl;
+      const url = `${baseUrl}/send/media`;
       
       // Sanitize number
-      const cleanNumber = to.replace(/\D/g, '');
+      let cleanNumber = to.replace(/\D/g, '');
+
+      // Check if it looks like a Brazilian number without country code (10 or 11 digits)
+      if ((cleanNumber.length === 10 || cleanNumber.length === 11) && parseInt(cleanNumber.substring(0, 2)) >= 11) {
+          cleanNumber = '55' + cleanNumber;
+          this.logger.log(`Prepended 55 to media number: ${cleanNumber}`);
+      }
 
       let fileToSend = mediaUrl;
       const appUrl = this.configService.get<string>('APP_URL');
@@ -188,13 +211,18 @@ export class UazapiService {
         this.logger.log(`Attempting to download media for message ${messageId}`);
         const url = `${this.apiUrl}/message/download`;
         const payload = {
-            id: messageId,
-            return_base64: true, // Request base64 directly
+            messageId: messageId, // Try 'messageId' as key first
+            id: messageId,        // Keep 'id' for compatibility
+            return_base64: true, 
             generate_mp3: false,
-            return_link: true,   // Request link as fallback
+            return_link: true,   
             transcribe: false,
             download_quoted: false
         };
+
+        this.logger.log(`Downloading media from ${url} with payload: ${JSON.stringify(payload)}`);
+
+        const httpsAgent = new https.Agent({ rejectUnauthorized: false });
 
         const response = await axios.post(url, payload, {
             headers: {
@@ -202,7 +230,8 @@ export class UazapiService {
                 'Accept': 'application/json',
                 'token': token,
             },
-            timeout: 15000 // 15s timeout
+            timeout: 30000,
+            httpsAgent 
         });
 
         this.logger.log(`Download media response status: ${response.status}`);
@@ -231,13 +260,22 @@ export class UazapiService {
                 mimetype,
                 filename: responseData.filename
             };
-        } else if (responseData.link || responseData.fileURL) {
-             const link = responseData.link || responseData.fileURL;
+        } 
+        
+        // Fallback to link download
+        const link = responseData.link || responseData.fileURL || responseData.url;
+        if (link) {
              this.logger.log(`Base64 missing, attempting to download from link: ${link}`);
              try {
+                 // Create an HTTPS agent that ignores self-signed certificate errors
+                 const httpsAgent = new https.Agent({  
+                     rejectUnauthorized: false
+                 });
+
                  const linkResponse = await axios.get(link, { 
                      responseType: 'arraybuffer',
-                     timeout: 15000 
+                     timeout: 30000,
+                     httpsAgent: httpsAgent
                  });
                  const buffer = Buffer.from(linkResponse.data);
                  const mimetype = linkResponse.headers['content-type'] || responseData.mimetype || 'application/octet-stream';
@@ -254,7 +292,7 @@ export class UazapiService {
         
         this.logger.error(`Download media response missing base64 and link. Data keys: ${Object.keys(response.data || {}).join(', ')}`);
         if (response.data) {
-             this.logger.error(`Response data: ${JSON.stringify(response.data)}`);
+             this.logger.debug(`Response data: ${JSON.stringify(response.data)}`);
         }
         
 
@@ -273,6 +311,11 @@ export class UazapiService {
             this.logger.error(`Uazapi error response status: ${err.response.status}`);
             this.logger.error(`Uazapi error response data: ${JSON.stringify(err.response.data)}`);
             this.logger.error(`Uazapi error response headers: ${JSON.stringify(err.response.headers)}`);
+            
+            // Handle "Invalid URL" specifically
+            if (err.response.data && (err.response.data.message === 'Invalid URL' || err.response.data.error === 'Invalid URL')) {
+                 this.logger.warn('Uazapi returned Invalid URL. This usually means the message ID is old or the media is no longer available on WhatsApp servers.');
+            }
         }
         return null;
     }
@@ -292,12 +335,18 @@ export class UazapiService {
             offset
         };
 
+        // Create an HTTPS agent that ignores self-signed certificate errors
+        const httpsAgent = new https.Agent({  
+            rejectUnauthorized: false
+        });
+
         const response = await axios.post(url, payload, {
             headers: {
                 'Content-Type': 'application/json',
                 'Accept': 'application/json',
                 'token': token,
-            }
+            },
+            httpsAgent: httpsAgent
         });
 
         if (response.data && Array.isArray(response.data)) {
@@ -323,6 +372,7 @@ export class UazapiService {
     instanceId?: string;
     contactName?: string;
     isGroup?: boolean;
+    fromMe?: boolean;
     media?: {
       type: 'image' | 'video' | 'audio' | 'document' | 'sticker';
       url?: string;
@@ -390,6 +440,7 @@ export class UazapiService {
               timestamp,
               type,
               instanceId,
+              fromMe: false,
               media: {
                   type: type as any,
                   url: fileUrl,
@@ -475,6 +526,9 @@ export class UazapiService {
 
       const instanceId = payload.instanceId || payload.instance_id || payload.owner;
       const contactName = messageData.pushName || messageData.senderName || messageData.contact?.name || messageData.notifyName || payload.chat?.contactName;
+
+      // Extract fromMe
+      const fromMe = messageData.key?.fromMe || messageData.fromMe || false;
 
       // Extract media details
       let media: any = undefined;
@@ -680,9 +734,10 @@ export class UazapiService {
         messageId,
         timestamp,
         type,
-        instanceId, 
+        instanceId,
         contactName,
         isGroup,
+        fromMe,
         media,
       };
     } catch (error) {

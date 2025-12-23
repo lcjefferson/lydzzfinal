@@ -1,35 +1,125 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class AnalyticsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async getDashboardMetrics() {
-    const [totalConversations, activeLeads, totalMessages, totalAgents] =
-      await Promise.all([
-        this.prisma.conversation.count(),
-        this.prisma.lead.count({ where: { status: { not: 'lost' } } }),
-        this.prisma.message.count(),
-        this.prisma.agent.count(),
-      ]);
+  async getDashboardMetrics(
+    userId?: string,
+    role?: string,
+    organizationId?: string,
+  ) {
+    const whereConversation: Prisma.ConversationWhereInput = {
+      organizationId,
+      channel: { type: { not: 'internal' } },
+    };
+    const whereLead: Prisma.LeadWhereInput = {
+      organizationId,
+      status: { not: 'lost' },
+    };
+
+    const r = String(role || '').toLowerCase();
+    if (r && r !== 'admin' && r !== 'manager') {
+      Object.assign(whereConversation, {
+        OR: [{ assignedToId: userId }, { lead: { assignedToId: userId } }],
+      });
+      Object.assign(whereLead, { assignedToId: userId });
+    }
+
+    const now = new Date();
+    const thirtyDaysAgo = new Date(now);
+    thirtyDaysAgo.setDate(now.getDate() - 30);
+    const sixtyDaysAgo = new Date(now);
+    sixtyDaysAgo.setDate(now.getDate() - 60);
+
+    // Helper to get count for a period
+    const getCount = async (model: any, where: any, start: Date, end: Date) => {
+      return model.count({
+        where: {
+          ...where,
+          createdAt: {
+            gte: start,
+            lt: end,
+          },
+        },
+      });
+    };
+
+    // Calculate trends
+    const calculateTrend = (current: number, previous: number) => {
+      if (previous === 0) return current > 0 ? 100 : 0;
+      return Math.round(((current - previous) / previous) * 100);
+    };
+
+    // 1. Conversations
+    const currentConversations = await getCount(this.prisma.conversation, whereConversation, thirtyDaysAgo, now);
+    const previousConversations = await getCount(this.prisma.conversation, whereConversation, sixtyDaysAgo, thirtyDaysAgo);
+    const totalConversations = await this.prisma.conversation.count({ where: whereConversation });
+
+    // 2. Leads (Active/New)
+    // For "Active Leads" metric, we usually show total active. For trend, we show "New leads created" trend.
+    const currentNewLeads = await getCount(this.prisma.lead, whereLead, thirtyDaysAgo, now);
+    const previousNewLeads = await getCount(this.prisma.lead, whereLead, sixtyDaysAgo, thirtyDaysAgo);
+    const activeLeads = await this.prisma.lead.count({ where: whereLead });
+
+    // 3. Messages
+    const currentMessages = await getCount(this.prisma.message, {}, thirtyDaysAgo, now);
+    const previousMessages = await getCount(this.prisma.message, {}, sixtyDaysAgo, thirtyDaysAgo);
+    const totalMessages = await this.prisma.message.count();
+
+    // 4. Agents
+    const currentAgents = await getCount(this.prisma.agent, { organizationId }, thirtyDaysAgo, now);
+    const previousAgents = await getCount(this.prisma.agent, { organizationId }, sixtyDaysAgo, thirtyDaysAgo);
+    const totalAgents = await this.prisma.agent.count({ where: { organizationId } });
 
     return {
-      totalConversations,
-      activeLeads,
-      totalMessages,
-      totalAgents,
+      totalConversations: {
+        value: totalConversations,
+        trend: calculateTrend(currentConversations, previousConversations),
+      },
+      activeLeads: {
+        value: activeLeads,
+        trend: calculateTrend(currentNewLeads, previousNewLeads),
+      },
+      totalMessages: {
+        value: totalMessages,
+        trend: calculateTrend(currentMessages, previousMessages),
+      },
+      totalAgents: {
+        value: totalAgents,
+        trend: calculateTrend(currentAgents, previousAgents),
+      },
     };
   }
 
-  async getConversationStats() {
+  async getConversationStats(
+    userId?: string,
+    role?: string,
+    organizationId?: string,
+  ) {
+    const where: Prisma.ConversationWhereInput = {
+      organizationId,
+      channel: { type: { not: 'internal' } },
+    };
+
+    const r = String(role || '').toLowerCase();
+    if (r && r !== 'admin' && r !== 'manager') {
+      Object.assign(where, {
+        OR: [{ assignedToId: userId }, { lead: { assignedToId: userId } }],
+      });
+    }
+
     const byStatus = await this.prisma.conversation.groupBy({
       by: ['status'],
+      where,
       _count: { id: true },
     });
 
     const byChannel = await this.prisma.conversation.groupBy({
       by: ['channelId'],
+      where,
       _count: { id: true },
     });
 

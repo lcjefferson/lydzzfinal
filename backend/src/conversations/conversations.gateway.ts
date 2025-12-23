@@ -82,4 +82,8 @@ export class ConversationsGateway
       .to(`conversation_${conversationId}`)
       .emit('statusChange', { conversationId, status });
   }
+
+  emitNotificationCreated(notification: any) {
+    this.server.emit('notificationCreated', notification);
+  }
 }

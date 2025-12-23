@@ -1,13 +1,17 @@
 import { Injectable } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { CreateLeadDto } from './dto/create-lead.dto';
 import { UpdateLeadDto } from './dto/update-lead.dto';
 import { Lead, Prisma } from '@prisma/client';
 
 @Injectable()
 export class LeadsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notificationsService: NotificationsService,
+  ) {}
 
   async create(dto: CreateLeadDto): Promise<Lead> {
     const organization = await this.prisma.organization.findFirst();
@@ -174,7 +178,8 @@ export class LeadsService {
       userId?: string;
       createdAt: string;
     }> = [...existing, newComment];
-    return this.prisma.lead.update({
+
+    const updatedLead = await this.prisma.lead.update({
       where: { id },
       data: {
         customFields: {
@@ -183,6 +188,23 @@ export class LeadsService {
         },
       },
     });
+
+    if (lead?.assignedToId && lead.assignedToId !== userId) {
+      await this.notificationsService.create({
+        type: 'lead_comment_added',
+        entityId: lead.id,
+        userId: lead.assignedToId,
+        organizationId: lead.organizationId,
+        data: {
+          leadId: lead.id,
+          leadName: lead.name,
+          commentContent: content,
+          commentId: newComment.id,
+        },
+      });
+    }
+
+    return updatedLead;
   }
 
   async getComments(

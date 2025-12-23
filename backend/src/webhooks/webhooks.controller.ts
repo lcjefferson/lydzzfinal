@@ -13,6 +13,7 @@ import {
 } from '@nestjs/common';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as https from 'https';
 import axios from 'axios';
 import { WebhooksService } from './webhooks.service';
 import { CreateWebhookDto } from './dto/create-webhook.dto';
@@ -355,6 +356,11 @@ export class WebhooksController {
           return { status: 'ignored_group' };
       }
 
+      if (incomingMessage.fromMe) {
+          this.logger.log(`Ignoring message sent by me (echo) from ${incomingMessage.from}`);
+          return { status: 'ignored_from_me' };
+      }
+
       this.logger.log(`Parsed message: ${JSON.stringify(incomingMessage, null, 2)}`);
 
       const channels = await this.prisma.channel.findMany({
@@ -493,8 +499,14 @@ export class WebhooksController {
              // If we have no base64 but have mediaKey/messageId, try to download
              else if (incomingMessage.messageId) {
                  const cfg = (channel?.config && typeof channel.config === 'object' ? channel.config : {}) as { token?: string };
-                 const token = cfg.token || process.env.UAZAPI_INSTANCE_TOKEN;
+                 let token = cfg.token;
                  
+                 // If token is missing in channel config, try env var
+                 if (!token) {
+                     token = process.env.UAZAPI_INSTANCE_TOKEN;
+                     if (token) this.logger.log('Using UAZAPI_INSTANCE_TOKEN from env as fallback');
+                 }
+
                  this.logger.log(`Processing media for message ${incomingMessage.messageId}. Token available: ${!!token}`);
 
                  if (token) {
@@ -517,17 +529,34 @@ export class WebhooksController {
              if (!buffer && incomingMessage.media.url && incomingMessage.media.url.startsWith('http')) {
                  try {
                      this.logger.log(`Attempting to download media from URL: ${incomingMessage.media.url}`);
-                     const response = await axios.get(incomingMessage.media.url, { responseType: 'arraybuffer' });
+                     
+                     // Create HTTPS agent to ignore self-signed certificates for fallback download
+                     const httpsAgent = new https.Agent({ rejectUnauthorized: false });
+
+                     const response = await axios.get(incomingMessage.media.url, { 
+                         responseType: 'arraybuffer',
+                         timeout: 30000,
+                         headers: {
+                             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                         },
+                         httpsAgent: httpsAgent
+                     });
                      const contentType = response.headers['content-type'];
                      if (contentType && (contentType.includes('text/html') || contentType.includes('application/json') || contentType.includes('text/plain'))) {
                          this.logger.warn(`Downloaded content from URL is ${contentType}, likely an error page or expired link. Discarding.`);
+                         if (response.data.length < 1000) {
+                             this.logger.debug(`Content preview: ${response.data.toString()}`);
+                         }
                      } else {
                          buffer = Buffer.from(response.data);
                          mimetype = contentType || mimetype;
                          this.logger.log(`Downloaded media from URL. Size: ${buffer.length}, Type: ${mimetype}`);
                      }
                  } catch (err) {
-                     this.logger.error(`Failed to download media from URL: ${incomingMessage.media.url}`, err);
+                     this.logger.error(`Failed to download media from URL: ${incomingMessage.media.url}. Error: ${(err as Error).message}`);
+                     if (axios.isAxiosError(err) && err.response) {
+                         this.logger.error(`Fallback download status: ${err.response.status}`);
+                     }
                  }
              }
 
@@ -708,7 +737,7 @@ export class WebhooksController {
   @Post('test')
   @UseGuards(JwtAuthGuard)
   async testWebhook(
-    @Body() body: { event: string; payload: Prisma.InputJsonValue },
+    @Body() body: { event: string; payload: any },
   ) {
     await this.webhooksService.triggerWebhook(body.event, body.payload);
     return { message: 'Webhook triggered' };

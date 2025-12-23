@@ -2,7 +2,6 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateMessageDto } from './dto/create-message.dto';
-import { Message } from '@prisma/client';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -11,6 +10,7 @@ import { ConversationsGateway } from '../conversations/conversations.gateway';
 import { OpenAIService } from '../common/openai.service';
 import { WhatsAppService } from '../integrations/whatsapp.service';
 import { UazapiService } from '../integrations/uazapi.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class MessagesService {
@@ -23,6 +23,7 @@ export class MessagesService {
     private readonly whatsAppService: WhatsAppService,
     private readonly uazapiService: UazapiService,
     private readonly configService: ConfigService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   async syncMessages(conversationId: string): Promise<number> {
@@ -217,7 +218,7 @@ export class MessagesService {
       }
   }
 
-  async create(dto: CreateMessageDto): Promise<Message> {
+  async create(dto: CreateMessageDto): Promise<any> {
     const message = await this.prisma.message.create({
       data: {
         type: dto.type ?? 'text',
@@ -270,6 +271,21 @@ export class MessagesService {
           await this.prisma.conversation.update({
             where: { id: conversation.id },
             data: { leadId: lead.id },
+          });
+        }
+
+        if (lead.assignedToId) {
+          await this.notificationsService.create({
+            type: 'lead_message_received',
+            entityId: lead.id,
+            userId: lead.assignedToId,
+            organizationId: lead.organizationId,
+            data: {
+              leadId: lead.id,
+              leadName: lead.name,
+              messageContent: dto.content,
+              conversationId: conversation.id,
+            },
           });
         }
       }
@@ -329,7 +345,34 @@ export class MessagesService {
             else mediaType = 'document'; // Default for 'file'
         }
 
-        await this.sendWhatsAppMessage(conversation, dto.content, mediaUrl, mediaType);
+        const success = await this.sendWhatsAppMessage(conversation, dto.content, mediaUrl, mediaType);
+        
+        if (!success) {
+            this.logger.error(`Failed to send message ${message.id} via WhatsApp`);
+            // Update metadata to indicate failure
+            await this.prisma.message.update({
+                where: { id: message.id },
+                data: {
+                    metadata: {
+                        ...(message.metadata as object || {}),
+                        status: 'failed',
+                        error: 'Failed to send to provider'
+                    }
+                }
+            });
+        } else {
+            // Update metadata to indicate success (optional, or rely on lack of error)
+             await this.prisma.message.update({
+                where: { id: message.id },
+                data: {
+                    metadata: {
+                        ...(message.metadata as object || {}),
+                        status: 'sent',
+                        sentAt: new Date().toISOString()
+                    }
+                }
+            });
+        }
       }
 
       if (conversation && !conversation.agentId) {
@@ -478,7 +521,7 @@ export class MessagesService {
     conversation: {
       contactIdentifier: string;
       channel: {
-        config: import('@prisma/client').Prisma.JsonValue | null;
+        config: any;
         accessToken?: string | null;
       };
     },
@@ -495,16 +538,34 @@ export class MessagesService {
               accessToken?: string;
               instanceId?: string;
               token?: string;
+              serverUrl?: string;
               provider?: 'whatsapp-official' | 'uazapi';
             })
           : null;
 
       const envToken = this.configService.get<string>('UAZAPI_INSTANCE_TOKEN');
 
-      const provider =
-        (channel as unknown as { provider?: string }).provider ??
-        (config?.provider ?? 
-          ((config?.token) || (envToken) ? 'uazapi' : 'whatsapp-official'));
+      let provider = (channel as unknown as { provider?: string }).provider;
+
+      // Smart provider detection logic
+      // If provider says 'whatsapp-official' (default) but config looks like Uazapi, switch to Uazapi
+      if (!provider || provider === 'whatsapp-official') {
+          const hasUazapiToken = !!(config?.token || envToken);
+          const hasOfficialConfig = !!(config?.phoneNumberId || channel.accessToken || this.configService.get('WHATSAPP_ACCESS_TOKEN'));
+          
+          // If we have Uazapi token but no explicit Official config in the channel itself (ignoring env fallback for official for a moment to be safe, or checking if env fallback is actually used)
+          // Actually, let's prioritize Uazapi if explicit config is present
+          if (config?.token || config?.instanceId) {
+             provider = 'uazapi';
+          } else if (hasUazapiToken && !hasOfficialConfig) {
+             provider = 'uazapi';
+          }
+      }
+      
+      // Explicit override from config
+      if (config?.provider) {
+          provider = config.provider;
+      }
 
       console.log(`Sending message via provider: ${provider}, to: ${conversation.contactIdentifier}`);
 
@@ -515,25 +576,36 @@ export class MessagesService {
         
         if (!token) {
           console.error('Uazapi channel missing configuration');
-          return;
+          return false;
         }
 
         if (mediaUrl && mediaType) {
-          await this.uazapiService.sendMediaMessage(
+          const success = await this.uazapiService.sendMediaMessage(
             conversation.contactIdentifier,
             mediaUrl,
             mediaType,
             message,
             token,
+            config?.serverUrl,
           );
+          if (!success) {
+            this.logger.error(`Failed to send media message via Uazapi to ${conversation.contactIdentifier}`);
+            return false;
+          }
+          return true;
         } else {
-          await this.uazapiService.sendMessage(
+          const success = await this.uazapiService.sendMessage(
             conversation.contactIdentifier,
             message,
             token,
+            config?.serverUrl,
           );
+          if (!success) {
+            this.logger.error(`Failed to send text message via Uazapi to ${conversation.contactIdentifier}`);
+            return false;
+          }
+          return true;
         }
-        return;
       }
 
       const accessToken = config?.accessToken || channel.accessToken || this.configService.get<string>('WHATSAPP_ACCESS_TOKEN');
@@ -541,7 +613,7 @@ export class MessagesService {
 
       if (!phoneNumberId || !accessToken) {
         console.error('WhatsApp channel missing configuration');
-        return;
+        return false;
       }
 
       await this.whatsAppService.sendMessage(
@@ -550,23 +622,25 @@ export class MessagesService {
         phoneNumberId,
         accessToken,
       );
+      return true;
     } catch (error) {
       console.error('Error sending WhatsApp message:', error);
+      return false;
     }
   }
 
-  async findAll(conversationId: string): Promise<Message[]> {
+  async findAll(conversationId: string): Promise<any[]> {
     return this.prisma.message.findMany({
       where: { conversationId },
       orderBy: { createdAt: 'asc' },
     });
   }
 
-  async findOne(id: string): Promise<Message | null> {
+  async findOne(id: string): Promise<any | null> {
     return this.prisma.message.findUnique({ where: { id } });
   }
 
-  async update(id: string, data: any): Promise<Message> {
+  async update(id: string, data: any): Promise<any> {
     const updated = await this.prisma.message.update({
       where: { id },
       data,
@@ -575,7 +649,7 @@ export class MessagesService {
     return updated;
   }
 
-  async remove(id: string): Promise<Message> {
+  async remove(id: string): Promise<any> {
     return this.prisma.message.delete({ where: { id } });
   }
 }

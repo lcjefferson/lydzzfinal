@@ -94,6 +94,22 @@ class SocketService {
     offTyping(callback: (payload: { conversationId: string; userId?: string; name?: string; at: number }) => void): void {
         this.socket?.off('typing', callback);
     }
+
+    onNotificationCreated(callback: (notification: any) => void): void {
+        this.socket?.on('notificationCreated', callback);
+    }
+
+    offNotificationCreated(callback: (notification: any) => void): void {
+        this.socket?.off('notificationCreated', callback);
+    }
+
+    onStatusChange(callback: (payload: { conversationId: string; status: string }) => void): void {
+        this.socket?.on('statusChange', callback);
+    }
+
+    offStatusChange(callback: (payload: { conversationId: string; status: string }) => void): void {
+        this.socket?.off('statusChange', callback);
+    }
 }
 
 export const socketService = new SocketService();

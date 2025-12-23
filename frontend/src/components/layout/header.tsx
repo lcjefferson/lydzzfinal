@@ -17,9 +17,9 @@ export function Header({ title, description, actions }: HeaderProps) {
     const { user, logout } = useAuth();
     const [showUserMenu, setShowUserMenu] = useState(false);
     const roleLabel = typeof user?.role === 'string' ? user.role : 'user';
-    const { onMessageCreated, offMessageCreated } = useSocket();
+    const { onMessageCreated, offMessageCreated, onNotificationCreated, offNotificationCreated } = useSocket();
     const [notifCount, setNotifCount] = useState(0);
-    const [notifications, setNotifications] = useState<Array<{ id: string; type: string; entityId: string; createdAt: string; readAt?: string; content?: string }>>([]);
+    const [notifications, setNotifications] = useState<Array<{ id: string; type: string; entityId: string; data?: any; createdAt: string; readAt?: string; content?: string }>>([]);
     const [showNotifMenu, setShowNotifMenu] = useState(false);
     const router = useRouter();
 
@@ -27,7 +27,7 @@ export function Header({ title, description, actions }: HeaderProps) {
         const load = async () => {
             try {
                 const items = await (await import('@/lib/api')).api.getNotifications();
-                setNotifications(items.map((n) => ({ id: n.id, type: n.type, entityId: n.entityId, createdAt: n.createdAt, readAt: n.readAt })));
+                setNotifications(items.map((n) => ({ id: n.id, type: n.type, entityId: n.entityId, data: n.data, createdAt: n.createdAt, readAt: n.readAt })));
                 setNotifCount(items.filter((n) => !n.readAt).length);
             } catch {}
         };
@@ -36,16 +36,45 @@ export function Header({ title, description, actions }: HeaderProps) {
         const handleMessageCreated = async () => {
             try {
                 const items = await (await import('@/lib/api')).api.getNotifications();
-                setNotifications(items.map((n) => ({ id: n.id, type: n.type, entityId: n.entityId, createdAt: n.createdAt, readAt: n.readAt })));
+                setNotifications(items.map((n) => ({ id: n.id, type: n.type, entityId: n.entityId, data: n.data, createdAt: n.createdAt, readAt: n.readAt })));
                 setNotifCount(items.filter((n) => !n.readAt).length);
             } catch {}
         };
 
+        const handleNotificationCreated = async (notification: any) => {
+             try {
+                // Optionally verify if the notification belongs to the user, but the socket event should be targeted or filtered.
+                // Since we don't have user context in the event easily, we just reload the list.
+                // Or we can optimistic add it.
+                // For now, let's reload to be safe and consistent with handleMessageCreated.
+                const items = await (await import('@/lib/api')).api.getNotifications();
+                setNotifications(items.map((n) => ({ id: n.id, type: n.type, entityId: n.entityId, data: n.data, createdAt: n.createdAt, readAt: n.readAt })));
+                setNotifCount(items.filter((n) => !n.readAt).length);
+                 // Show toast? Maybe later.
+            } catch {}
+        };
+
         onMessageCreated(handleMessageCreated);
+        onNotificationCreated(handleNotificationCreated);
         return () => {
             offMessageCreated(handleMessageCreated);
+            offNotificationCreated(handleNotificationCreated);
         };
-    }, [onMessageCreated, offMessageCreated]);
+    }, [onMessageCreated, offMessageCreated, onNotificationCreated, offNotificationCreated]);
+
+    const getNotificationTitle = (n: any) => {
+        const leadName = n.data?.leadName || 'Lead';
+        if (n.type === 'lead_comment_added') return `Novo comentário em ${leadName}`;
+        if (n.type === 'lead_message_received') return `Nova mensagem de ${leadName}`;
+        if (n.type === 'lead_delegated') return `Lead ${leadName} atribuído a você`;
+        return n.type || 'Nova notificação';
+    };
+
+    const getNotificationContent = (n: any) => {
+        if (n.type === 'lead_comment_added') return n.data?.commentContent;
+        if (n.type === 'lead_message_received') return n.data?.messageContent;
+        return '';
+    };
 
     return (
         <div className="border-b border-border bg-white sticky top-0 z-10">
@@ -108,7 +137,10 @@ export function Header({ title, description, actions }: HeaderProps) {
                                     ) : (
                                         notifications.map((n) => (
                                             <div key={n.id} className="px-4 py-2 border-b border-border">
-                                                <p className="text-sm truncate">{n.type || 'Nova mensagem'}</p>
+                                                <p className="text-sm font-medium truncate">{getNotificationTitle(n)}</p>
+                                                {getNotificationContent(n) && (
+                                                    <p className="text-xs text-text-secondary truncate mt-0.5">{getNotificationContent(n)}</p>
+                                                )}
                                                 <div className="flex items-center justify-between mt-1">
                                                     <p className="text-xs text-text-tertiary">{new Date(n.createdAt).toLocaleString('pt-BR')}</p>
                                                     <button
@@ -118,14 +150,16 @@ export function Header({ title, description, actions }: HeaderProps) {
                                                                 await (await import('@/lib/api')).api.markNotificationRead(n.id);
                                                             } catch {}
                                                             setShowNotifMenu(false);
-                                                            if (n.entityId) {
+                                                            if (n.type === 'lead_comment_added' || n.type === 'lead_message_received' || n.type === 'lead_delegated') {
+                                                                router.push(`/leads?lead=${encodeURIComponent(n.data?.leadId || n.entityId)}`);
+                                                            } else if (n.entityId) {
                                                                 router.push(`/conversations?conversationId=${encodeURIComponent(n.entityId)}`);
                                                             } else {
                                                                 router.push('/conversations');
                                                             }
                                                         }}
                                                     >
-                                                        Abrir conversa
+                                                        Ver
                                                     </button>
                                                 </div>
                                             </div>

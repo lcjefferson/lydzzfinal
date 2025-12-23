@@ -112,6 +112,22 @@ Authorization: Bearer <your_jwt_token>
 - `GET /analytics/conversations` - Conversation stats (protected)
 - `GET /analytics/leads` - Lead stats (protected)
 
+### Analytics Logic & Permissions
+
+The analytics endpoints (`/analytics/dashboard`, etc.) apply automatic filtering based on user roles:
+
+- **Admin / Manager**: View data for the entire organization.
+- **Consultant / User**: View data ONLY for:
+  - Conversations assigned to them (`assignedToId`).
+  - Leads assigned to them (`lead.assignedToId`).
+
+**Note on Conversation Counts:**
+Both the Dashboard and the Conversation List (Menu) explicitly **exclude** "Internal" channels (e.g., team chat rooms) from the counts. This ensures that metrics reflect only customer-facing interactions.
+- If you see a discrepancy, check if some conversations are marked as `internal`.
+- The logic is now unified: Dashboard, Stats, and List all use the same `channel: { type: { not: 'internal' } }` filter.
+
+This ensures consultants only see their own performance metrics and workload.
+
 ## 🔌 WebSocket Events
 
 Connect to `ws://localhost:3001` for real-time updates.
