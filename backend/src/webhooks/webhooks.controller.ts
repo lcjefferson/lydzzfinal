@@ -523,17 +523,29 @@ export class WebhooksController {
              if (!buffer && incomingMessage.media.url && incomingMessage.media.url.startsWith('http')) {
                  try {
                      this.logger.log(`Attempting to download media from URL: ${incomingMessage.media.url}`);
-                     const response = await axios.get(incomingMessage.media.url, { responseType: 'arraybuffer' });
+                     const response = await axios.get(incomingMessage.media.url, { 
+                         responseType: 'arraybuffer',
+                         timeout: 30000,
+                         headers: {
+                             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                         }
+                     });
                      const contentType = response.headers['content-type'];
                      if (contentType && (contentType.includes('text/html') || contentType.includes('application/json') || contentType.includes('text/plain'))) {
                          this.logger.warn(`Downloaded content from URL is ${contentType}, likely an error page or expired link. Discarding.`);
+                         if (response.data.length < 1000) {
+                             this.logger.debug(`Content preview: ${response.data.toString()}`);
+                         }
                      } else {
                          buffer = Buffer.from(response.data);
                          mimetype = contentType || mimetype;
                          this.logger.log(`Downloaded media from URL. Size: ${buffer.length}, Type: ${mimetype}`);
                      }
                  } catch (err) {
-                     this.logger.error(`Failed to download media from URL: ${incomingMessage.media.url}`, err);
+                     this.logger.error(`Failed to download media from URL: ${incomingMessage.media.url}. Error: ${(err as Error).message}`);
+                     if (axios.isAxiosError(err) && err.response) {
+                         this.logger.error(`Fallback download status: ${err.response.status}`);
+                     }
                  }
              }
 
@@ -714,7 +726,7 @@ export class WebhooksController {
   @Post('test')
   @UseGuards(JwtAuthGuard)
   async testWebhook(
-    @Body() body: { event: string; payload: Prisma.InputJsonValue },
+    @Body() body: { event: string; payload: any },
   ) {
     await this.webhooksService.triggerWebhook(body.event, body.payload);
     return { message: 'Webhook triggered' };
