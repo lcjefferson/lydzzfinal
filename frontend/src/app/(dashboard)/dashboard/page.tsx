@@ -24,30 +24,42 @@ export default function DashboardPage() {
     const stats = [
         {
             title: 'Conversas',
-            value: metrics?.totalConversations?.toString() || '0',
+            value: metrics?.totalConversations?.value?.toString() || '0',
             icon: MessageSquare,
-            trend: { value: 12, isPositive: true },
+            trend: { 
+                value: Math.abs(metrics?.totalConversations?.trend || 0), 
+                isPositive: (metrics?.totalConversations?.trend || 0) >= 0 
+            },
             iconColor: 'text-info',
         },
         {
             title: 'Leads Ativos',
-            value: metrics?.activeLeads?.toString() || '0',
+            value: metrics?.activeLeads?.value?.toString() || '0',
             icon: Users,
-            trend: { value: 8, isPositive: true },
+            trend: { 
+                value: Math.abs(metrics?.activeLeads?.trend || 0), 
+                isPositive: (metrics?.activeLeads?.trend || 0) >= 0 
+            },
             iconColor: 'text-success',
         },
         {
             title: 'Mensagens',
-            value: metrics?.totalMessages?.toString() || '0',
+            value: metrics?.totalMessages?.value?.toString() || '0',
             icon: MessageSquare,
-            trend: { value: 5, isPositive: true },
+            trend: { 
+                value: Math.abs(metrics?.totalMessages?.trend || 0), 
+                isPositive: (metrics?.totalMessages?.trend || 0) >= 0 
+            },
             iconColor: 'text-warning',
         },
         {
             title: 'Agentes',
-            value: metrics?.totalAgents?.toString() || '0',
+            value: metrics?.totalAgents?.value?.toString() || '0',
             icon: Bot,
-            trend: { value: 3, isPositive: true },
+            trend: { 
+                value: Math.abs(metrics?.totalAgents?.trend || 0), 
+                isPositive: (metrics?.totalAgents?.trend || 0) >= 0 
+            },
             iconColor: 'text-accent-primary',
         },
     ];
@@ -96,7 +108,7 @@ export default function DashboardPage() {
                             <div className="h-64 flex items-center justify-center text-neutral-700">
                                 <div className="text-center">
                                     <MessageSquare className="h-12 w-12 mx-auto mb-2 text-neutral-500" />
-                                    <p className="text-neutral-900">Total de Conversas: {metrics?.totalConversations || 0}</p>
+                                    <p className="text-neutral-900">Total de Conversas: {metrics?.totalConversations?.value || 0}</p>
                                     <p className="text-sm mt-1 text-neutral-600">
                                         Configure canais para ver estatísticas
                                     </p>

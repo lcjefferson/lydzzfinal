@@ -118,11 +118,16 @@ export interface Webhook {
     updatedAt: Date;
 }
 
+export interface MetricWithTrend {
+    value: number;
+    trend: number;
+}
+
 export interface DashboardMetrics {
-    totalConversations: number;
-    activeLeads: number;
-    totalMessages: number;
-    totalAgents: number;
+    totalConversations: MetricWithTrend;
+    activeLeads: MetricWithTrend;
+    totalMessages: MetricWithTrend;
+    totalAgents: MetricWithTrend;
 }
 
 export interface ConversationStats {
