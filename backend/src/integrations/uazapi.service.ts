@@ -294,6 +294,11 @@ export class UazapiService {
             this.logger.error(`Uazapi error response status: ${err.response.status}`);
             this.logger.error(`Uazapi error response data: ${JSON.stringify(err.response.data)}`);
             this.logger.error(`Uazapi error response headers: ${JSON.stringify(err.response.headers)}`);
+            
+            // Handle "Invalid URL" specifically
+            if (err.response.data && (err.response.data.message === 'Invalid URL' || err.response.data.error === 'Invalid URL')) {
+                 this.logger.warn('Uazapi returned Invalid URL. This usually means the message ID is old or the media is no longer available on WhatsApp servers.');
+            }
         }
         return null;
     }
